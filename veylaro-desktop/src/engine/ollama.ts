@@ -18,11 +18,19 @@ export interface ChatMsg {
   content: string;
 }
 
-const OPTS = { temperature: 0.3, num_predict: 1024, top_p: 0.9 };
+/** Per-SKU tuning: Lite trades ceiling for snap; Max gets full depth.
+    When a dedicated veylaro-code-lite model ships, MODEL_PREFERENCE
+    picks it up automatically — until then Lite runs the same weights
+    with a tighter budget so it *feels* featherweight. */
+const SKU_OPTS = {
+  lite: { temperature: 0.3, num_predict: 512, top_p: 0.9, num_ctx: 4096 },
+  max: { temperature: 0.3, num_predict: 1024, top_p: 0.9 },
+} as const;
 const KEEP_ALIVE = "30m";
 
 /** Preferred shipped model names, best first. */
 const MODEL_PREFERENCE = ["veylaro-code", "veylaro"];
+export const LITE_MODEL_PREFERENCE = ["veylaro-code-lite", "veylaro-lite"];
 
 export async function ollamaAlive(url: string): Promise<boolean> {
   try {
@@ -68,12 +76,13 @@ export async function* ollamaChat(
   url: string,
   model: string,
   messages: ChatMsg[],
+  sku: "lite" | "max" = "max",
   signal?: AbortSignal
 ): AsyncGenerator<string> {
   const res = await fetch(`${url.replace(/\/$/, "")}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, messages, stream: true, think: false, keep_alive: KEEP_ALIVE, options: OPTS }),
+    body: JSON.stringify({ model, messages, stream: true, think: false, keep_alive: KEEP_ALIVE, options: SKU_OPTS[sku] }),
     signal,
   });
   if (!res.ok || !res.body) throw new Error(`Laro engine responded ${res.status}`);

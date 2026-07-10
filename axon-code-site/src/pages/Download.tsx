@@ -24,8 +24,8 @@ export function Download() {
               One download.<br /><span className="grad-text">The whole intelligence.</span>
             </h1>
             <p className="lede">
-              The installer ships with the full Laro model inside. No account, no API keys,
-              no setup wizard from hell. Install, open a project, start building.
+              The installer ships with the full Laro model inside. One free account, no API keys,
+              no setup wizard from hell. Install, sign in, open a project, start building.
             </p>
             {!DOWNLOADS_ENABLED && (
               <div className="interest-band">

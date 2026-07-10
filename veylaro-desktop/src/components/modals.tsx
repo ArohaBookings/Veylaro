@@ -320,9 +320,15 @@ export function UpgradeModal({ onClose }: { onClose: () => void }) {
       </div>
       <div className="mfoot">
         <button className="btn ghost" onClick={onClose}>Not now</button>
-        <a className="btn primary" href={`${SITE_URL}/#/pricing`} target="_blank" rel="noreferrer">
+        <a className="btn primary" href="https://buy.stripe.com/5kQ8wH5cnfkRfN7576aR200" target="_blank" rel="noreferrer">
           Upgrade — $29/mo →
         </a>
+      </div>
+      <div className="hintline" style={{ textAlign: "right" }}>
+        <a href="https://buy.stripe.com/bJe9ALgV55Kh9oJbvuaR201" target="_blank" rel="noreferrer">
+          Or annual — $290/yr (2 months free) →
+        </a>{" "}
+        · Stripe checkout · USD & NZD
       </div>
       {account && (
         <div className="hintline" style={{ textAlign: "right" }}>

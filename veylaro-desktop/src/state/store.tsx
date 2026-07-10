@@ -357,10 +357,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const sys: { role: "system"; content: string }[] = [{ role: "system", content: LARO_SYSTEM_PROMPT }];
             if (searchCtx) sys.push({ role: "system", content: searchCtx });
             setStreamText("");
-            for await (const chunk of ollamaChat(settings.ollamaUrl, settings.ollamaModel, [
-              ...sys,
-              { role: "user", content: `[session scope: ${active.scope}]\n${text}` },
-            ])) {
+            for await (const chunk of ollamaChat(
+              settings.ollamaUrl,
+              settings.ollamaModel,
+              [...sys, { role: "user", content: `[session scope: ${active.scope}]\n${text}` }],
+              settings.model
+            )) {
               acc += chunk;
               setStreamText(acc);
             }

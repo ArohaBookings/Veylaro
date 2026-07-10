@@ -58,7 +58,7 @@ export function PrivacyPolicy() {
             <h2 id="s3">3. The data we do collect</h2>
             <p>We collect the smallest set of data required to operate a software business:</p>
             <ul>
-              <li><strong>Account data (optional — paid plans only).</strong> Email address and display name, used for login, receipts and license recovery. The Free tier requires no account.</li>
+              <li><strong>Account data (all plans, including Free).</strong> Email address and display name, used for login, plan enforcement, receipts and license recovery. Accounts are stored with Google Firebase Authentication; your password is hashed by Firebase and never visible to us.</li>
               <li><strong>Billing data.</strong> Handled by our payment processor (see §5). We receive plan, status and country — never your full card number.</li>
               <li><strong>License checks.</strong> Paid apps periodically confirm license validity by sending a license token, app version, and a coarse platform identifier (e.g. "macOS/arm64"). No code, prompts, file names, hardware serials or usage content are ever included.</li>
               <li><strong>Crash reports (opt-in, off by default).</strong> If you explicitly enable them, a crash report contains stack traces of <em>our</em> code and system info. Reports are scrubbed of file paths and never include your source code or prompts.</li>
@@ -77,8 +77,8 @@ export function PrivacyPolicy() {
             <h2 id="s5">5. Payments</h2>
             <p>
               Purchases are processed by a PCI-DSS Level 1 payment processor acting as our processor
-              (currently Stripe, Inc.). Your card details go directly to them; we receive only subscription
-              status, plan tier, and billing country. Their privacy policy governs their processing.
+              (currently Stripe, Inc.), with checkout in USD or NZD. Your card details go directly to them;
+              we receive only subscription status, plan tier, and billing country. Their privacy policy governs their processing.
             </p>
 
             <h2 id="s6">6. Model updates &amp; licensing</h2>
@@ -91,10 +91,11 @@ export function PrivacyPolicy() {
 
             <h2 id="s7">7. Website</h2>
             <p>
-              The Site uses no advertising trackers and no third-party analytics that profile you. We keep
-              standard, short-lived server logs (IP address, user agent, pages requested) for security and
-              capacity planning, retained for a maximum of 30 days. Aggregate, non-identifying download
-              counts are computed from these logs before deletion.
+              The Site uses no advertising trackers. We use Google Firebase for accounts, for aggregate,
+              non-profiling analytics, and to store <strong>register-interest emails</strong> you submit
+              before launch — those are used only to tell you when downloads open, never sold or shared,
+              and deleted on request. We keep standard, short-lived server logs (IP address, user agent,
+              pages requested) for security and capacity planning, retained for a maximum of 30 days.
             </p>
 
             <h2 id="s8">8. Support</h2>

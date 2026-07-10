@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Reveal, GlowCard } from "../components/FX";
 import { Check, Plus, DownloadIcon, ArrowRight } from "../components/Icons";
+import { STRIPE_LINKS } from "../config";
 
 type Plan = {
   name: string;
@@ -10,6 +11,7 @@ type Plan = {
   annualMonthly?: number; // effective monthly on annual billing
   cta: string;
   to: string;
+  stripe?: { monthly: string; annual: string }; // hosted checkout (USD/NZD)
   featured?: boolean;
   features: { t: string; off?: boolean }[];
   note?: string;
@@ -32,15 +34,16 @@ const PLANS: Plan[] = [
       { t: "Local API access", off: true },
       { t: "Commercial license", off: true },
     ],
-    note: "No account. No credit card.",
+    note: "Free account — no credit card.",
   },
   {
     name: "Pro",
     tagline: "For serious builders",
     monthly: 29,
     annualMonthly: 24,
-    cta: "Start 14-day free trial",
+    cta: "Go Pro",
     to: "/download",
+    stripe: { monthly: STRIPE_LINKS.proMonthly, annual: STRIPE_LINKS.proAnnual },
     featured: true,
     features: [
       { t: "Unlimited usage — run it 24/7" },
@@ -59,8 +62,9 @@ const PLANS: Plan[] = [
     tagline: "For small teams",
     monthly: 119,
     annualMonthly: 99,
-    cta: "Join the waitlist",
+    cta: "Get Team",
     to: "/download",
+    stripe: { monthly: STRIPE_LINKS.teamMonthly, annual: STRIPE_LINKS.teamAnnual },
     features: [
       { t: "Everything in Pro, per seat ×5" },
       { t: "Shared team memory & conventions" },
@@ -200,9 +204,20 @@ export function Pricing() {
                       </li>
                     ))}
                   </ul>
-                  <Link to={p.to} className={`btn ${p.featured ? "primary" : "ghost"}`}>
-                    {p.cta}
-                  </Link>
+                  {p.stripe ? (
+                    <a
+                      href={annual ? p.stripe.annual : p.stripe.monthly}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`btn ${p.featured ? "primary" : "ghost"}`}
+                    >
+                      {p.cta} — {annual ? "annual" : "monthly"}
+                    </a>
+                  ) : (
+                    <Link to={p.to} className={`btn ${p.featured ? "primary" : "ghost"}`}>
+                      {p.cta}
+                    </Link>
+                  )}
                   {p.note && <div style={{ fontSize: 12, color: "var(--dim)", textAlign: "center", marginTop: 12 }}>{p.note}</div>}
                 </GlowCard>
               </Reveal>
@@ -210,7 +225,9 @@ export function Pricing() {
           </div>
           <Reveal delay={200}>
             <p className="footnote center" style={{ marginTop: 26 }}>
-              All plans run 100% locally. Prices in USD. Annual Pro is $290/year — pay for 10 months, use 12.
+              All plans run 100% locally. Billed securely by Stripe in USD or NZD — checkout localizes
+              automatically. Annual Pro is $290/year — pay for 10 months, use 12. The Free plan needs
+              only an account; your card is never asked for.
             </p>
           </Reveal>
         </div>

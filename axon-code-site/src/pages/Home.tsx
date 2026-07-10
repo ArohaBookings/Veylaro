@@ -15,7 +15,7 @@ const STORY = [
   {
     num: "01 — Install",
     title: "The model downloads with the app.",
-    body: "One installer. Laro Max — or Laro Lite for lighter machines — lands on your SSD: weights, memory, everything. No account, no API key, no cloud handshake.",
+    body: "One installer. Laro Max — or Laro Lite for lighter machines — lands on your SSD: weights, memory, everything. One free account, no API key, no cloud handshake.",
   },
   {
     num: "02 — Understand",
@@ -176,7 +176,7 @@ export function Home() {
               <div className="hero-sub">
                 <span><Apple size={14} /> macOS</span>
                 <span><Windows size={13} /> Windows</span>
-                <span>Free tier · No account · No credit card</span>
+                <span>Free tier · 2-minute account · No credit card</span>
               </div>
             </Reveal>
             <Reveal delay={550}>
@@ -386,7 +386,7 @@ export function Home() {
                 <RegisterInterest source="home-cta" />
               </div>
               <div className="hero-sub" style={{ justifyContent: "center", marginTop: 22 }}>
-                <span>Free tier included</span><span>·</span><span>Pro from $29/mo</span><span>·</span><span>No account required</span>
+                <span>Free tier included</span><span>·</span><span>Pro from $29/mo</span><span>·</span><span>Billed by Stripe · USD & NZD</span>
               </div>
             </div>
           </Reveal>
