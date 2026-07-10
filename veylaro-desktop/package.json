@@ -1,0 +1,42 @@
+{
+  "name": "veylaro-code",
+  "productName": "Veylaro Code",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Veylaro Code — the most powerful local AI coding agent. Laro Lite & Laro Max, running entirely on your machine.",
+  "author": "Veylaro Labs",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "app": "electron .",
+    "dist": "vite build && electron-builder --mac zip --publish never"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.8"
+  },
+  "build": {
+    "appId": "ai.veylaro.code",
+    "productName": "Veylaro Code",
+    "artifactName": "VeylaroCode-${version}-${arch}-mac.${ext}",
+    "files": ["dist/**", "electron/**", "package.json"],
+    "directories": { "output": "release" },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "target": [{ "target": "zip", "arch": ["arm64"] }]
+    }
+  }
+}

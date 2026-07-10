@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Register-interest: anyone may add ONE well-formed email row.
+    // Only super admins may read, list or delete.
+    match /interest/{docId} {
+      allow create: if request.resource.data.keys().hasOnly(['email', 'source', 'ua', 'ts'])
+                    && request.resource.data.email is string
+                    && request.resource.data.email.matches('.+@.+[.].+')
+                    && request.resource.data.email.size() < 120;
+      allow read, delete: if request.auth != null
+                          && request.auth.token.email in ['leoanthonybons@gmail.com'];
+      allow update: if false;
+    }
+
+    // Future: user accounts / plans (written by backend only).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

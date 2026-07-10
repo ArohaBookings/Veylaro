@@ -1,0 +1,17 @@
+# Veylaro public repo — only the site and the desktop app ship.
+/*
+!/axon-code-site/
+!/veylaro-desktop/
+!/.gitignore
+!/README.md
+
+# build + dependency artifacts
+node_modules/
+dist/
+release/
+.DS_Store
+*.log
+*.local
+
+# big binaries never belong in git (GitHub Releases host these)
+axon-code-site/public/downloads/
