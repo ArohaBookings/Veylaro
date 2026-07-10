@@ -26,11 +26,11 @@ drop policy if exists "admin reads interest" on public.interest;
 create policy "admin reads interest"
   on public.interest for select
   to authenticated
-  using ( (auth.jwt() ->> 'email') = 'support@arohacalls.com' );
+  using ( (auth.jwt() ->> 'email') = 'leoanthonybons@gmail.com' );
 
 -- only the super admin may delete
 drop policy if exists "admin deletes interest" on public.interest;
 create policy "admin deletes interest"
   on public.interest for delete
   to authenticated
-  using ( (auth.jwt() ->> 'email') = 'support@arohacalls.com' );
+  using ( (auth.jwt() ->> 'email') = 'leoanthonybons@gmail.com' );

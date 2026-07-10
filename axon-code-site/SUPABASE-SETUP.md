@@ -1,39 +1,37 @@
 # Supabase setup — Veylaro
 
-The site is wired to the Supabase project `ockumizfxvzdkcjgmqcl`
-(`src/lib/supabase.ts`, publishable key — safe to ship). Two things finish it.
+Backend: Supabase project `ockumizfxvzdkcjgmqcl`
+(`src/lib/supabase.ts` holds the URL + publishable key — safe to ship).
 
-## 1. Log into Mission Control (you're 1 click away)
+## 1. Admin login — DONE, ready now ✅
 
-Your admin account is already created:
-- **Email:** support@arohacalls.com
+Your Veylaro admin account is live and **pre-confirmed** (no email click needed):
+
+- **URL:** https://veylaroai.com/#/admin
+- **Email:** leoanthonybons@gmail.com
 - **Password:** the one you chose
 
-**Check the support@arohacalls.com inbox for the "Confirm your signup" email
-from Supabase and click the link.** Then go to `https://veylaroai.com/#/admin`
-and sign in. That's it — no dashboard work needed for login.
-
-(Only `support@arohacalls.com` is allowed through the gate — the list lives in
+Just go there and sign in. (The Supabase project is *owned* by
+support@arohacalls.com; the Veylaro admin *login* is leoanthonybons@gmail.com —
+they're independent. Only that email is allowed through the gate, set in
 `src/lib/supabase.ts` → `SUPER_ADMINS`.)
 
-## 2. Create the `interest` table (one time)
+## 2. The `interest` table — one migration left
 
-Until this runs, register-interest emails queue safely in each visitor's
-browser and the admin panel shows "table not found" — nothing is lost.
+Register-interest emails currently queue safely in each visitor's browser
+(nothing is lost). To store them in the cloud and see them in Mission Control,
+run the migration once — any of:
 
-**Easiest:** Supabase dashboard → **SQL Editor** → paste the contents of
-[`supabase/migrations/0001_interest.sql`](supabase/migrations/0001_interest.sql)
-→ **Run**. Done.
+- **SQL Editor:** paste [`supabase/migrations/0001_interest.sql`](supabase/migrations/0001_interest.sql) → Run.
+- **CLI:** `supabase db push` (needs the DB password).
+- **MCP:** authorize the project MCP (`.mcp.json` is already set) via `/mcp`, then Claude applies it.
 
-**Or via the MCP:** the project MCP is registered in `.mcp.json`
-(`https://mcp.supabase.com/mcp?project_ref=ockumizfxvzdkcjgmqcl`). Authorize it
-once (`/mcp` in an interactive Claude session) and Claude can apply the
-migration for you with `apply_migration`.
-
-The migration also turns on row-level security: anyone may submit an email,
-only `support@arohacalls.com` can read or delete the list.
+Creating a table needs a database-level credential (DB password or a Management
+API token) that the publishable/secret API keys don't grant — that's why this
+one step is manual. RLS in the migration: anyone may submit an email; only
+leoanthonybons@gmail.com can read or delete the list.
 
 ## Notes
-- The publishable key in `src/lib/supabase.ts` is the public client key — safe in the repo.
-- Never commit the **service_role** key; it isn't needed for anything above.
-- Email confirmation is on (Supabase default) — good, it keeps the admin login secure.
+- Publishable key in the repo = public client key, safe.
+- **Never commit the secret key** (`sb_secret_…`) — it's server-only and isn't in any file.
+- Email confirmation stays ON for anyone who signs up later — good for security.

@@ -12,5 +12,5 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   },
 });
 
-/** Accounts allowed into Mission Control. */
-export const SUPER_ADMINS = ["support@arohacalls.com"];
+/** Accounts allowed into Mission Control (Veylaro admin login). */
+export const SUPER_ADMINS = ["leoanthonybons@gmail.com"];
