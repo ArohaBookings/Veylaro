@@ -5,7 +5,7 @@ import { recommendModel } from "../engine/tiers";
 import { VeylaroMark } from "./Logo";
 import { Bolt, Check, Clock, Cpu, FileIc, FolderIc, Sparkle, User } from "./icons";
 
-const SITE_URL = "http://localhost:5174"; // veylaro.ai in production
+const SITE_URL = import.meta.env.DEV ? "http://localhost:5174" : "https://veylaroai.com";
 
 function Veil({ children, onClose }: { children: React.ReactNode; onClose?: () => void }) {
   return (
