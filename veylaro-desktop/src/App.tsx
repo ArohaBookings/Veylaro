@@ -14,16 +14,26 @@ import { ChatIc, FileIc, ImageIc, TerminalIc } from "./components/icons";
 
 function Shell() {
   const store = useStore();
-  const { active, settings, setSettings, onboarded, liveModel } = store;
+  const { active, settings, setSettings, onboarded, liveModel, lastSaved } = store;
   const [modal, setModal] = useState<null | "signin" | "new" | "settings" | "upgrade" | "intel">(null);
   const [view, setView] = useState<"chat" | "term">("chat");
   const [palette, setPalette] = useState(false);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPalette((v) => !v);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        setModal("new");
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        setSettings({ deckOpen: !settingsRef.current.deckOpen });
       }
     };
     window.addEventListener("keydown", onKey);
@@ -80,6 +90,9 @@ function Shell() {
           <VeylaroMark size={20} /> Veylaro <span style={{ color: "var(--copper)", marginLeft: 2 }}>Code</span>
         </span>
         <span className="env">
+          <span className="saved-chip" title="Everything autosaves locally — chat, files, checkpoints, drafts. Crash-proof.">
+            ✓ saved {new Date(lastSaved).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
           <span className="dot-live" /> local ·{" "}
           {settings.engine === "ollama" && liveModel
             ? `live weights · ${liveModel.replace(/:latest$/, "")}`

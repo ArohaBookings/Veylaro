@@ -402,10 +402,36 @@ function CompactBar({
 
 /* ---- the chat surface ---- */
 
+const AWAY_MS = 6 * 3600 * 1000;
+
+function WelcomeBack({ onDismiss }: { onDismiss: () => void }) {
+  const { active } = useStore();
+  if (!active) return null;
+  const lastRecap = [...active.msgs].reverse().flatMap((m) => m.events || []).find((e) => e.kind === "recap");
+  const files = Object.keys(active.files).length;
+  return (
+    <div className="wb-card">
+      <span className="wb-t">✦ Welcome back.</span>
+      <span className="wb-b">
+        Last time in this session{lastRecap && lastRecap.kind === "recap" ? `: “${lastRecap.title}”` : ""} — {files} file{files === 1 ? "" : "s"} touched,
+        every change and checkpoint saved. Pick up right where you left off.
+      </span>
+      <button className="wb-x" onClick={onDismiss} aria-label="Dismiss">×</button>
+    </div>
+  );
+}
+
 export function Chat() {
   const { active } = useStore();
   const endRef = useRef<HTMLDivElement>(null);
   const [expandedFor, setExpandedFor] = useState<string | null>(null);
+  const [wbDismissed, setWbDismissed] = useState(false);
+  const wasAway = useMemo(() => {
+    if (!active?.msgs.length) return false;
+    const last = active.msgs[active.msgs.length - 1];
+    return Date.now() - last.ts > AWAY_MS;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id]);
   const { streamText } = useStore();
   const count = useMemo(
     () => (active ? active.msgs.reduce((n, m) => n + (m.events?.length || 0), 0) + active.msgs.length : 0),
@@ -427,6 +453,7 @@ export function Chat() {
   return (
     <div className="chat">
       <div className="chat-inner">
+        {wasAway && !wbDismissed && <WelcomeBack onDismiss={() => setWbDismissed(true)} />}
         {compactable && (
           <CompactBar
             hidden={hidden.length ? hidden : active.msgs.slice(0, active.msgs.length - KEEP_RECENT)}

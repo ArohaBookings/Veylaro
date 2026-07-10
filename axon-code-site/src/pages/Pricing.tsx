@@ -26,7 +26,7 @@ const PLANS: Plan[] = [
     to: "/download",
     features: [
       { t: "Laro Lite & Laro Max — the real models, full weights" },
-      { t: "120 agent messages per week" },
+      { t: "200 agent messages per week — resets every Monday" },
       { t: "Chat, file & image understanding" },
       { t: "Single-project memory" },
       { t: "Community support" },

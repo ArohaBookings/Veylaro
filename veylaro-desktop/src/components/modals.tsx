@@ -72,7 +72,7 @@ export function SignInModal({ onClose }: { onClose: () => void }) {
           <h2 style={{ justifyContent: "center", marginTop: 14 }}>Welcome back.</h2>
           <p className="sub">
             {foundPlan === "free"
-              ? "You're on the Free plan — 120 agent messages a week."
+              ? "You're on the Free plan — 200 agent messages a week, resets Monday."
               : `${foundPlan === "pro" ? "Pro" : "Team"} plan found — unlimited usage unlocked. ✦`}
           </p>
         </div>

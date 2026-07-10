@@ -19,8 +19,14 @@ export function Composer({
   onUpgrade: () => void;
 }) {
   const store = useStore();
-  const { settings, setSettings, running, pending, locked, account, active } = store;
+  const { settings, setSettings, running, pending, locked, account, active, effectivePlan, remaining } = store;
   const [text, setText] = useState("");
+
+  // crash-proof drafts: restore what you were typing, per session
+  useEffect(() => {
+    setText(active?.draft || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id]);
   const [listening, setListening] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
 
@@ -45,6 +51,7 @@ export function Composer({
     stopVoice();
     store.send(text.trim(), attachments);
     setText("");
+    if (active) store.setDraft(active.id, "");
     setAttachments(() => []);
     if (taRef.current) taRef.current.style.height = "auto";
   };
@@ -107,15 +114,31 @@ export function Composer({
     });
   };
 
-  const plan = account?.plan ?? "free";
+  const plan = effectivePlan;
 
   return (
     <div className="composer-wrap">
+      {account?.billing === "past_due" && (
+        <div className="lock-banner billing">
+          <Lock size={20} style={{ color: "var(--amber)", flexShrink: 0 }} />
+          <div className="lt">
+            <b>Payment issue — your {account.plan === "team" ? "Team" : "Pro"} plan is paused.</b>
+            <p>Nothing is deleted. You're on Free limits until the payment goes through, then everything unlocks again automatically.</p>
+          </div>
+          <a className="btn primary" href="https://veylaroai.com/#/pricing" target="_blank" rel="noreferrer">Fix payment</a>
+        </div>
+      )}
+      {plan === "free" && !locked && remaining <= 20 && (
+        <div className="low-strip">
+          ⚡ {remaining} free message{remaining === 1 ? "" : "s"} left this week — resets Monday.
+          <button className="low-cta" onClick={onUpgrade}>Go unlimited →</button>
+        </div>
+      )}
       {locked && (
         <div className="lock-banner">
           <Lock size={22} style={{ color: "var(--copper)", flexShrink: 0 }} />
           <div className="lt">
-            <b>You've used all 120 free messages this week.</b>
+            <b>You've used all 200 free messages this week — resets Monday.</b>
             <p>The model is still on your machine — the free tier just caps the agent. Pro removes every limit: run it all night for one flat price.</p>
           </div>
           <button className="btn primary" onClick={onUpgrade}>Unlock unlimited</button>
@@ -146,6 +169,7 @@ export function Composer({
           }
           onChange={(e) => {
             setText(e.target.value);
+            if (active) store.setDraft(active.id, e.target.value); // survives crashes
             autoGrow();
           }}
           onKeyDown={(e) => {

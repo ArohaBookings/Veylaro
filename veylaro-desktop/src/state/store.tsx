@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import {
   Account, AgentEvent, Attachment, BgTask, BrowseStep, Checkpoint, FileStat, FREE_WEEKLY_LIMIT, Msg,
-  PermMode, Question, Session, Settings, TermLine, Usage, VaultItem,
+  PermMode, Plan, Question, Session, Settings, TermLine, Usage, VaultItem,
 } from "../types";
 import { buildQuestions, buildRun, needsClarification, simulateTerminal, TimedEvent } from "../engine/demo";
 import { detectLiveModel, LARO_SYSTEM_PROMPT, ollamaChat, warmup } from "../engine/ollama";
@@ -23,6 +23,8 @@ export function weekKey(d = new Date()): string {
 }
 
 const LS_KEY = "veylaro.v1";
+const LS_BAK = "veylaro.v1.bak"; // rolling backup — survives a corrupted main record
+const LS_USAGE = "veylaro.usage"; // double-booked meter so the free limit survives anything
 
 interface Persisted {
   account: Account | null;
@@ -55,19 +57,44 @@ const DEFAULT_SETTINGS: Settings = {
   viewportUrl: "http://localhost:3000",
 };
 
-function load(): Persisted {
+function readUsageMirror(): Usage | null {
   try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) {
-      const p = JSON.parse(raw) as Persisted;
-      if (p.usage.weekKey !== weekKey()) p.usage = { weekKey: weekKey(), used: 0 };
-      p.settings = { ...DEFAULT_SETTINGS, ...p.settings };
-      p.sessions = p.sessions.map((s) => ({ ...s, term: s.term || [] }));
-      p.vault = p.vault || [];
-      return p;
-    }
-  } catch { /* fresh start */ }
-  return {
+    const raw = localStorage.getItem(LS_USAGE);
+    if (!raw) return null;
+    return JSON.parse(atob(raw)) as Usage;
+  } catch {
+    return null;
+  }
+}
+
+export function writeUsageMirror(u: Usage) {
+  try {
+    localStorage.setItem(LS_USAGE, btoa(JSON.stringify(u)));
+  } catch { /* storage full — main record still has it */ }
+}
+
+function hydrate(p: Persisted): Persisted {
+  if (p.usage.weekKey !== weekKey()) p.usage = { weekKey: weekKey(), used: 0 };
+  // the meter is double-booked: whichever record survived, the higher count wins
+  const mirror = readUsageMirror();
+  if (mirror && mirror.weekKey === p.usage.weekKey && mirror.used > p.usage.used) {
+    p.usage = mirror;
+  }
+  p.settings = { ...DEFAULT_SETTINGS, ...p.settings };
+  p.sessions = p.sessions.map((s) => ({ ...s, term: s.term || [] }));
+  p.vault = p.vault || [];
+  return p;
+}
+
+function load(): Persisted {
+  // main record, then the rolling backup — a corrupted write never loses your work
+  for (const key of [LS_KEY, LS_BAK]) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) return hydrate(JSON.parse(raw) as Persisted);
+    } catch { /* try the next copy */ }
+  }
+  return hydrate({
     account: null,
     settings: DEFAULT_SETTINGS,
     sessions: [],
@@ -75,7 +102,7 @@ function load(): Persisted {
     usage: { weekKey: weekKey(), used: 0 },
     onboarded: false,
     vault: [],
-  };
+  });
 }
 
 /* ============ store ============ */
@@ -118,7 +145,10 @@ interface Store extends Persisted {
   runTerminal(cmd: string): Promise<void>;
   saveToVault(item: Omit<VaultItem, "id" | "ts">): void;
   removeVaultItem(id: string): void;
+  setDraft(sessionId: string, draft: string): void;
   setOnboarded(): void;
+  lastSaved: number; // autosave heartbeat for the titlebar chip
+  effectivePlan: Plan; // billing-aware: past_due → free until payment is fixed
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -182,19 +212,52 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [lastSaved, setLastSaved] = useState(Date.now());
+  const stRef = useRef(st);
+  stRef.current = st;
+
   useEffect(() => {
-    const t = setTimeout(() => localStorage.setItem(LS_KEY, JSON.stringify(st)), 250);
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(st));
+        writeUsageMirror(st.usage);
+        setLastSaved(Date.now());
+      } catch { /* storage full — keep running, retry next change */ }
+    }, 120);
     return () => clearTimeout(t);
   }, [st]);
+
+  // crash armour: rolling backup every 20s + hard flush when the window
+  // hides, loses focus, or closes — a kernel panic mid-run loses ≤120ms.
+  useEffect(() => {
+    const flush = () => {
+      try {
+        const raw = JSON.stringify(stRef.current);
+        localStorage.setItem(LS_KEY, raw);
+        localStorage.setItem(LS_BAK, raw);
+        writeUsageMirror(stRef.current.usage);
+      } catch { /* best effort */ }
+    };
+    const backup = setInterval(flush, 20000);
+    const onHide = () => document.visibilityState === "hidden" && flush();
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      clearInterval(backup);
+      window.removeEventListener("beforeunload", flush);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, []);
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
   const active = st.sessions.find((s) => s.id === st.activeId) || null;
-  const remaining =
-    st.account?.plan === "free" || !st.account
-      ? Math.max(0, FREE_WEEKLY_LIMIT - st.usage.used)
-      : Infinity;
-  const locked = (st.account?.plan ?? "free") === "free" && remaining <= 0;
+  // payment failed? nothing is deleted — the account simply behaves as Free
+  // (limits re-apply) until Stripe confirms payment again.
+  const effectivePlan: Plan =
+    !st.account || st.account.billing === "past_due" ? "free" : st.account.plan;
+  const remaining = effectivePlan === "free" ? Math.max(0, FREE_WEEKLY_LIMIT - st.usage.used) : Infinity;
+  const locked = effectivePlan === "free" && remaining <= 0;
 
   /* ---- session mutation helpers ---- */
 
@@ -312,15 +375,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     active,
     remaining,
     locked,
+    lastSaved,
+    effectivePlan,
 
     async signIn(name, email, license) {
       await new Promise((r) => setTimeout(r, 1400)); // "syncing with veylaro.ai"
-      const plan = /^VEY-TEAM-/i.test(license || "")
-        ? "team"
-        : /^VEY-PRO-/i.test(license || "")
-          ? "pro"
-          : "free";
-      const account: Account = { name: name.trim() || email.split("@")[0], email: email.trim(), plan };
+      const lic = license || "";
+      const plan = /^VEY-TEAM-/i.test(lic) ? "team" : /^VEY-(PRO|PASTDUE)-/i.test(lic) ? "pro" : "free";
+      const billing = /^VEY-PASTDUE-/i.test(lic) ? "past_due" : "active"; // PASTDUE = QA hook
+      const account: Account = { name: name.trim() || email.split("@")[0], email: email.trim(), plan, billing };
       setSt((p) => ({ ...p, account }));
       return account;
     },
@@ -375,13 +438,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const userMsg: Msg = { id: uid(), role: "user", text, attachments, ts: Date.now() };
       const agentMsg: Msg = { id: uid(), role: "agent", events: [], ts: Date.now() };
       mutSession(active.id, (s) => ({ ...s, msgs: [...s.msgs, userMsg, agentMsg] }));
-      setSt((p) => ({
-        ...p,
-        usage:
-          (p.account?.plan ?? "free") === "free"
-            ? { weekKey: weekKey(), used: p.usage.used + 1 }
-            : p.usage,
-      }));
+      setSt((p) => {
+        if (effectivePlan !== "free") return p;
+        const usage = { weekKey: weekKey(), used: p.usage.used + 1 };
+        writeUsageMirror(usage); // meter survives even if main storage is cleared
+        return { ...p, usage };
+      });
 
       const { settings } = st;
 
@@ -562,6 +624,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       mutSession(active.id, (s) => ({ ...s, term: [...s.term, line] }));
     },
 
+    setDraft(sessionId, draft) {
+      mutSession(sessionId, (s) => (s.draft === draft ? s : { ...s, draft }));
+    },
+
     saveToVault(item) {
       setSt((p) => ({ ...p, vault: [{ ...item, id: uid(), ts: Date.now() }, ...p.vault].slice(0, 100) }));
     },
@@ -590,7 +656,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => store,
-    [st, running, pending, restoredTo, ramGB, liveModel, streamText, streamThink, searching, bgTasks, lastBrowse]
+    [st, running, pending, restoredTo, ramGB, liveModel, streamText, streamThink, searching, bgTasks, lastBrowse, lastSaved]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -796,3 +796,29 @@ a { color: var(--copper); text-decoration: none; }
 .pal-foot { padding: 8px 14px; border-top: 1px solid var(--border); color: var(--dim); font-size: 10.5px; font-family: var(--font-mono); }
 
 @media (max-width: 1100px) { .deck { display: none; } .deck-tab-closed { display: none; } }
+
+/* ============ bulletproof round ============ */
+.saved-chip {
+  color: var(--dim); font-size: 10px; border: 1px solid var(--border); border-radius: 100px;
+  padding: 2px 9px; background: var(--surface); cursor: help;
+}
+.low-strip {
+  width: min(860px, calc(100% - 48px)); margin: 0 auto 8px;
+  display: flex; align-items: center; gap: 10px; justify-content: center;
+  border: 1px solid rgba(238,211,174,0.35); background: rgba(238,211,174,0.06);
+  color: var(--champagne); font-size: 12.5px; border-radius: 11px; padding: 7px 14px;
+  animation: rise-in 0.35s var(--ease-out);
+}
+.low-cta { border: none; background: none; color: var(--copper); font-weight: 700; font-size: 12.5px; cursor: pointer; }
+.low-cta:hover { text-decoration: underline; }
+.lock-banner.billing { border-color: rgba(251,191,36,0.45); background: linear-gradient(135deg, rgba(251,191,36,0.1), rgba(176,106,63,0.05)); }
+.wb-card {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  border: 1px solid rgba(216,154,102,0.35); border-radius: 13px; padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(216,154,102,0.09), transparent);
+  animation: rise-in 0.45s var(--ease-out); position: relative;
+}
+.wb-card .wb-t { font-family: var(--font-display); font-weight: 600; font-size: 14px; color: var(--champagne); }
+.wb-card .wb-b { color: var(--muted); font-size: 12.5px; flex: 1; min-width: 200px; }
+.wb-card .wb-x { position: absolute; top: 8px; right: 10px; border: none; background: none; color: var(--dim); cursor: pointer; font-size: 15px; }
+.wb-card .wb-x:hover { color: var(--text); }

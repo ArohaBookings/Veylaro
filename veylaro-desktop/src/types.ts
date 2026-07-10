@@ -6,10 +6,15 @@ export type Plan = "free" | "pro" | "team";
 export type LangPref = "both" | "plain" | "dev";
 export type EngineKind = "demo" | "ollama";
 
+export type BillingState = "active" | "past_due";
+
 export interface Account {
   name: string;
   email: string;
   plan: Plan;
+  /** Stripe subscription health. past_due = payment failed → treated as Free
+      until it's fixed; nothing is deleted, limits just re-apply. */
+  billing?: BillingState;
 }
 
 export type SubAgentPref = "off" | "duo" | "auto";
@@ -154,6 +159,7 @@ export interface Session {
   files: Record<string, FileStat>;
   checkpoints: Checkpoint[];
   term: TermLine[]; // terminal mode history
+  draft?: string; // unsent composer text — survives crashes and restarts
   createdAt: number;
 }
 
@@ -162,7 +168,10 @@ export interface Usage {
   used: number;
 }
 
-export const FREE_WEEKLY_LIMIT = 120;
+/** Free tier: enough to genuinely build ~two solid websites, every single
+    week (a full agent-built site runs ~60–90 messages incl. iterations).
+    Resets every Monday (ISO week). Enforced locally, so it works offline. */
+export const FREE_WEEKLY_LIMIT = 200;
 
 export const MODELS: Record<
   ModelId,

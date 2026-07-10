@@ -122,8 +122,8 @@ export function PrivacyHud() {
 /* ============ Usage meter ring (free tier) ============ */
 
 export function UsageRing() {
-  const { usage, account } = useStore();
-  const plan = account?.plan ?? "free";
+  const { usage, account, effectivePlan } = useStore();
+  const plan = effectivePlan;
   if (plan !== "free") {
     return (
       <div className="meter">
@@ -166,7 +166,7 @@ export function UsageRing() {
       </div>
       <div className="lbl">
         <b>{left} messages left</b>
-        Free tier · resets weekly
+        {account?.billing === "past_due" ? "Plan paused — fix payment" : "Free tier · resets Monday"}
       </div>
     </div>
   );
