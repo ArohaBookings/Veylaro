@@ -27,6 +27,11 @@ export interface Settings {
   planMode: boolean; // present a plan and wait for approval before acting
   subAgents: SubAgentPref; // auto = 3 lanes on 16GB+ machines, else 2
   overnight: boolean; // overnight personal-LoRA training opt-in
+  reasoning: boolean; // stream the model's visible thinking
+  voice: boolean; // Laro reads recaps aloud
+  deckOpen: boolean; // right-side Viewport/Tasks deck
+  deckWidth: number; // px
+  viewportUrl: string; // what the Viewport panel points at
 }
 
 export const APP_VERSION = "1.0.0";
@@ -73,6 +78,31 @@ export interface TermLine {
   ts: number;
 }
 
+export interface BgTask {
+  id: string;
+  label: string;
+  detail?: string;
+  status: "running" | "done" | "failed";
+  ts: number;
+}
+
+export interface VaultItem {
+  id: string;
+  title: string;
+  commit: string;
+  bullets: string[];
+  scope: string;
+  ts: number;
+}
+
+/** A step of Laro driving the Viewport — cursor coords are percentages. */
+export interface BrowseStep {
+  x: number;
+  y: number;
+  action: "move" | "click" | "type" | "scroll" | "look";
+  note: string;
+}
+
 export interface Checkpoint {
   id: string;
   label: string;
@@ -98,6 +128,8 @@ export type AgentEvent =
   | { kind: "plan"; goal: string; steps: string[] }
   | { kind: "web"; query: string; results: WebResult[] }
   | { kind: "agents"; lanes: SubAgentLane[] }
+  | { kind: "browse"; url: string; steps: BrowseStep[]; summary: string }
+  | { kind: "reasoning"; text: string }
   | { kind: "checkpoint"; label: string }
   | { kind: "recap"; title: string; bullets: string[]; commit: string }
   | { kind: "gate"; what: string; detail: string }

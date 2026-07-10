@@ -72,17 +72,32 @@ export async function warmup(url: string, model: string): Promise<void> {
   }
 }
 
+export type StreamChunk = { type: "think" | "text"; chunk: string };
+
+/**
+ * Stream a chat reply. When `reasoning` is true the model's thinking
+ * channel is streamed too (type "think") before the answer — the
+ * frontier-style visible reasoning. Off = maximum speed.
+ */
 export async function* ollamaChat(
   url: string,
   model: string,
   messages: ChatMsg[],
   sku: "lite" | "max" = "max",
+  reasoning = false,
   signal?: AbortSignal
-): AsyncGenerator<string> {
+): AsyncGenerator<StreamChunk> {
   const res = await fetch(`${url.replace(/\/$/, "")}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, messages, stream: true, think: false, keep_alive: KEEP_ALIVE, options: SKU_OPTS[sku] }),
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: true,
+      think: reasoning,
+      keep_alive: KEEP_ALIVE,
+      options: SKU_OPTS[sku],
+    }),
     signal,
   });
   if (!res.ok || !res.body) throw new Error(`Laro engine responded ${res.status}`);
@@ -99,8 +114,10 @@ export async function* ollamaChat(
       if (!line.trim()) continue;
       try {
         const j = JSON.parse(line);
+        const think = j?.message?.thinking;
+        if (think) yield { type: "think", chunk: think };
         const chunk = j?.message?.content;
-        if (chunk) yield chunk;
+        if (chunk) yield { type: "text", chunk };
         if (j?.done) return;
       } catch {
         /* partial line — keep buffering */

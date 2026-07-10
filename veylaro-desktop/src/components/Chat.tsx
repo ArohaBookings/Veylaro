@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { AgentEvent, LangPref, Msg, Question } from "../types";
 import { VeylaroMark } from "./Logo";
-import { Check, Compress, Copy, Globe, Map, Rewind, Sparkle, Users, Warn } from "./icons";
+import { Check, Compress, Copy, Eye, Globe, Map, Rewind, Sparkle, Users, Warn } from "./icons";
 
 /* ---- tiny glossary so vibe coders can hover dev-speak ---- */
 const GLOSSARY: Record<string, string> = {
@@ -142,6 +142,25 @@ function EventView({ ev, lang }: { ev: AgentEvent; lang: LangPref }) {
           </div>
         </div>
       );
+    case "reasoning":
+      return (
+        <details className="ev ev-reason">
+          <summary><Eye size={13} /> Reasoning — how Laro got there</summary>
+          <div className="rz-body">{ev.text}</div>
+        </details>
+      );
+    case "browse":
+      return (
+        <div className="ev ev-browse">
+          <div className="bhead">🖱 Drove the Viewport · <span className="burl">{ev.url}</span></div>
+          <div className="bsteps">
+            {ev.steps.map((s, i) => (
+              <span key={i} className="bstep">{s.action === "click" ? "⊙" : s.action === "type" ? "⌨" : s.action === "scroll" ? "↕" : "→"} {s.note}</span>
+            ))}
+          </div>
+          <div className="bsum">✓ {ev.summary}</div>
+        </div>
+      );
     case "gate":
     case "ask":
     case "done":
@@ -151,6 +170,8 @@ function EventView({ ev, lang }: { ev: AgentEvent; lang: LangPref }) {
 
 function RecapView({ title, bullets, commit }: { title: string; bullets: string[]; commit: string }) {
   const [copied, setCopied] = useState(false);
+  const { saveToVault, active } = useStore();
+  const [saved, setSaved] = useState(false);
   return (
     <div className="ev recap">
       <div className="rhead">
@@ -172,6 +193,16 @@ function RecapView({ title, bullets, commit }: { title: string; bullets: string[
           }}
         >
           <Copy size={12} /> {copied ? "Copied!" : "Copy commit"}
+        </button>
+        <button
+          className="btn ghost sm"
+          disabled={saved}
+          onClick={() => {
+            saveToVault({ title, commit, bullets, scope: active?.scope || "" });
+            setSaved(true);
+          }}
+        >
+          {saved ? "✦ In vault" : "Save to vault"}
         </button>
       </div>
     </div>
@@ -292,7 +323,7 @@ function QuestionWizard() {
 /* ---- one agent message = stream of events ---- */
 
 function AgentMsg({ m, isLast }: { m: Msg; isLast: boolean }) {
-  const { settings, running, pending, streamText } = useStore();
+  const { settings, running, pending, streamText, streamThink, searching } = useStore();
   const events = m.events || [];
   const done = events.some((e) => e.kind === "done");
   const showPending = isLast && pending?.msgId === m.id;
@@ -306,7 +337,18 @@ function AgentMsg({ m, isLast }: { m: Msg; isLast: boolean }) {
         {events.map((ev, i) => (
           <EventView key={i} ev={ev} lang={settings.lang} />
         ))}
-        {streaming && (
+        {isLast && running && searching && (
+          <span className="working-line searching">
+            <Globe size={13} className="spin-slow-ic" /> Searching the web — “{searching}”
+          </span>
+        )}
+        {isLast && running && streamThink && !streamText && (
+          <div className="ev ev-reason live">
+            <div className="rz-head"><Eye size={13} /> Laro is reasoning<span className="dots" style={{ marginLeft: 6 }}><i /><i /><i /></span></div>
+            <div className="rz-body">{streamThink}</div>
+          </div>
+        )}
+        {streaming && streamText && (
           <div className="ev ev-say">
             <div className="plain" style={{ whiteSpace: "pre-wrap" }}>
               {streamText}

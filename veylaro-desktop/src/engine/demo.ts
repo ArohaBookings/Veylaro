@@ -340,8 +340,35 @@ export function buildRun(opts: {
   });
   const c = t.cmd(s);
   out.push({ delay: d(700), ev: { kind: "cmd", cmd: c.cmd, out: c.out, ok: true } });
+
+  // frontier-style: Laro drives the Viewport to try the change for real
   out.push({
-    delay: d(900),
+    delay: d(600),
+    ev: {
+      kind: "say",
+      plain: "Opening it in the Viewport — I want to see this working with my own cursor.",
+      dev: "viewport: drive localhost · click-through the changed flow",
+    },
+  });
+  out.push({
+    delay: d(400),
+    ev: {
+      kind: "browse",
+      url: "http://localhost:3000",
+      summary: `clicked through the ${stem(s)} flow — looks right, feels right`,
+      steps: [
+        { x: 50, y: 22, action: "look", note: "loading your app…" },
+        { x: 32, y: 38, action: "move", note: `finding the ${stem(s)} entry point` },
+        { x: 32, y: 38, action: "click", note: "clicking in" },
+        { x: 58, y: 52, action: "type", note: "trying real input" },
+        { x: 72, y: 66, action: "click", note: "submitting" },
+        { x: 50, y: 44, action: "scroll", note: "checking the result renders" },
+        { x: 50, y: 30, action: "look", note: "✓ behaves exactly as planned" },
+      ],
+    },
+  });
+  out.push({
+    delay: d(4200),
     ev: { kind: "verify", target: base(s), ok: true, detail: "Ran it end-to-end after the change — behavior confirmed, not assumed." },
   });
 

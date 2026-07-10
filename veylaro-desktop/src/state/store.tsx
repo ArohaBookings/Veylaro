@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import {
-  Account, AgentEvent, Attachment, Checkpoint, FileStat, FREE_WEEKLY_LIMIT, Msg,
-  PermMode, Question, Session, Settings, TermLine, Usage,
+  Account, AgentEvent, Attachment, BgTask, BrowseStep, Checkpoint, FileStat, FREE_WEEKLY_LIMIT, Msg,
+  PermMode, Question, Session, Settings, TermLine, Usage, VaultItem,
 } from "../types";
 import { buildQuestions, buildRun, needsClarification, simulateTerminal, TimedEvent } from "../engine/demo";
 import { detectLiveModel, LARO_SYSTEM_PROMPT, ollamaChat, warmup } from "../engine/ollama";
@@ -31,6 +31,8 @@ interface Persisted {
   activeId: string | null;
   usage: Usage;
   onboarded: boolean;
+  vault: VaultItem[];
+  autoEngineDone?: boolean; // live-weights auto-switch runs once, ever
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -46,6 +48,11 @@ const DEFAULT_SETTINGS: Settings = {
   planMode: true,
   subAgents: "auto",
   overnight: false,
+  reasoning: true,
+  voice: false,
+  deckOpen: true,
+  deckWidth: 380,
+  viewportUrl: "http://localhost:3000",
 };
 
 function load(): Persisted {
@@ -56,6 +63,7 @@ function load(): Persisted {
       if (p.usage.weekKey !== weekKey()) p.usage = { weekKey: weekKey(), used: 0 };
       p.settings = { ...DEFAULT_SETTINGS, ...p.settings };
       p.sessions = p.sessions.map((s) => ({ ...s, term: s.term || [] }));
+      p.vault = p.vault || [];
       return p;
     }
   } catch { /* fresh start */ }
@@ -66,6 +74,7 @@ function load(): Persisted {
     activeId: null,
     usage: { weekKey: weekKey(), used: 0 },
     onboarded: false,
+    vault: [],
   };
 }
 
@@ -86,6 +95,10 @@ interface Store extends Persisted {
   ramGB: number;
   liveModel: string | null; // detected local Veylaro weights (null = preview brain)
   streamText: string | null; // live token stream from the real model
+  streamThink: string | null; // live reasoning stream (visible thinking)
+  searching: string | null; // active web-search query, shown in the UI
+  bgTasks: BgTask[]; // background activity for the deck
+  lastBrowse: { url: string; steps: BrowseStep[]; summary: string; ts: number } | null;
   // derived
   active: Session | null;
   remaining: number; // free-tier messages left this week
@@ -103,6 +116,8 @@ interface Store extends Persisted {
   answerQuestions(answers: Record<string, string>): void;
   restoreCheckpoint(cp: Checkpoint): void;
   runTerminal(cmd: string): Promise<void>;
+  saveToVault(item: Omit<VaultItem, "id" | "ts">): void;
+  removeVaultItem(id: string): void;
   setOnboarded(): void;
 }
 
@@ -121,7 +136,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [ramGB, setRamGB] = useState(8);
   const [liveModel, setLiveModel] = useState<string | null>(null);
   const [streamText, setStreamText] = useState<string | null>(null);
+  const [streamThink, setStreamThink] = useState<string | null>(null);
+  const [searching, setSearching] = useState<string | null>(null);
+  const [bgTasks, setBgTasks] = useState<BgTask[]>([]);
+  const [lastBrowse, setLastBrowse] = useState<Store["lastBrowse"]>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>();
+
+  const pushBg = (label: string, detail?: string): string => {
+    const id = uid();
+    setBgTasks((p) => [{ id, label, detail, status: "running" as const, ts: Date.now() }, ...p].slice(0, 24));
+    return id;
+  };
+  const doneBg = (id: string, ok = true, detail?: string) =>
+    setBgTasks((p) => p.map((t) => (t.id === id ? { ...t, status: ok ? "done" : "failed", ...(detail ? { detail } : {}) } : t)));
 
   useEffect(() => {
     if (window.veylaro?.sysinfo) window.veylaro.sysinfo().then((s) => setRamGB(s.ramGB)).catch(() => {});
@@ -136,12 +163,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       setLiveModel(found);
       if (found) {
-        setSt((p) =>
-          p.settings.engine === "demo"
-            ? { ...p, settings: { ...p.settings, engine: "ollama", ollamaModel: found.replace(/:latest$/, "") } }
-            : p
-        );
-        warmup(st.settings.ollamaUrl, found); // first message streams instantly
+        setSt((p) => {
+          if (p.autoEngineDone) return p; // user's explicit engine choice wins forever after
+          return {
+            ...p,
+            autoEngineDone: true,
+            settings: { ...p.settings, engine: "ollama", ollamaModel: found.replace(/:latest$/, "") },
+          };
+        });
+        // pre-warm only when the app will actually use the live engine
+        if (!st.autoEngineDone || st.settings.engine === "ollama") {
+          const bg = pushBg("Warming up Laro weights", found);
+          warmup(st.settings.ollamaUrl, found).then(() => doneBg(bg, true, `${found} hot — first token is instant`));
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -167,8 +201,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const mutSession = (id: string, fn: (s: Session) => Session) =>
     setSt((p) => ({ ...p, sessions: p.sessions.map((s) => (s.id === id ? fn({ ...s }) : s)) }));
 
-  const appendEvent = (sessionId: string, msgId: string, ev: AgentEvent) =>
-    mutSession(sessionId, (s) => {
+  const appendEvent = (sessionId: string, msgId: string, ev: AgentEvent) => {
+    if (ev.kind === "browse") {
+      setLastBrowse({ url: ev.url, steps: ev.steps, summary: ev.summary, ts: Date.now() });
+      const bg = pushBg("Driving the Viewport", ev.summary);
+      setTimeout(() => doneBg(bg), ev.steps.length * 700 + 800);
+      setSt((p) => (p.settings.deckOpen ? p : { ...p, settings: { ...p.settings, deckOpen: true } }));
+    }
+    if (ev.kind === "recap" && st.settings.voice && "speechSynthesis" in window) {
+      const u = new SpeechSynthesisUtterance(`${ev.title}. ${ev.bullets[0] || ""}`);
+      u.rate = 1.05;
+      window.speechSynthesis.speak(u);
+    }
+    return mutSession(sessionId, (s) => {
       const msgs = s.msgs.map((m) => (m.id === msgId ? { ...m, events: [...(m.events || []), ev] } : m));
       let files = s.files;
       let checkpoints = s.checkpoints;
@@ -201,6 +246,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       return { ...s, msgs, files, checkpoints };
     });
+  };
 
   /* ---- the runner: plays a timed script, pausing on gates/questions ---- */
 
@@ -259,6 +305,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ramGB,
     liveModel,
     streamText,
+    streamThink,
+    searching,
+    bgTasks,
+    lastBrowse,
     active,
     remaining,
     locked,
@@ -348,7 +398,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             let searchCtx = "";
             if (wantsWeb) {
               const q = text.slice(0, 90);
+              setSearching(q);
+              const bg = pushBg("Searching the web", q);
               const results = await webSearch(q);
+              setSearching(null);
+              doneBg(bg, !!results, results ? `${results.length} sources read locally` : "no live results — continuing offline");
               if (results && results.length) {
                 appendEvent(active.id, agentMsg.id, { kind: "web", query: q, results });
                 searchCtx = resultsToContext(q, results);
@@ -357,15 +411,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const sys: { role: "system"; content: string }[] = [{ role: "system", content: LARO_SYSTEM_PROMPT }];
             if (searchCtx) sys.push({ role: "system", content: searchCtx });
             setStreamText("");
-            for await (const chunk of ollamaChat(
+            let think = "";
+            for await (const part of ollamaChat(
               settings.ollamaUrl,
               settings.ollamaModel,
               [...sys, { role: "user", content: `[session scope: ${active.scope}]\n${text}` }],
-              settings.model
+              settings.model,
+              settings.reasoning
             )) {
-              acc += chunk;
-              setStreamText(acc);
+              if (part.type === "think") {
+                think += part.chunk;
+                setStreamThink(think);
+              } else {
+                acc += part.chunk;
+                setStreamText(acc);
+              }
             }
+            if (think.trim()) appendEvent(active.id, agentMsg.id, { kind: "reasoning", text: think.trim() });
             appendEvent(active.id, agentMsg.id, {
               kind: "say",
               plain: acc || "…the model returned an empty reply. Try again — the weights may still be loading.",
@@ -379,6 +441,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             });
           }
           setStreamText(null);
+          setStreamThink(null);
+          setSearching(null);
           appendEvent(active.id, agentMsg.id, { kind: "done", ms: 0 });
           setRunning(false);
         })();
@@ -482,6 +546,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         mutSession(active.id, (s) => ({ ...s, term: [] }));
         return;
       }
+      const bg = pushBg("Terminal", c.length > 42 ? c.slice(0, 42) + "…" : c);
       let res: { out: string; ok: boolean };
       if (window.veylaro?.exec) {
         try {
@@ -492,8 +557,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } else {
         res = simulateTerminal(c, Object.values(active.files));
       }
+      doneBg(bg, res.ok);
       const line: TermLine = { id: uid(), cmd: c, out: res.out, ok: res.ok, ts: Date.now() };
       mutSession(active.id, (s) => ({ ...s, term: [...s.term, line] }));
+    },
+
+    saveToVault(item) {
+      setSt((p) => ({ ...p, vault: [{ ...item, id: uid(), ts: Date.now() }, ...p.vault].slice(0, 100) }));
+    },
+
+    removeVaultItem(id) {
+      setSt((p) => ({ ...p, vault: p.vault.filter((v) => v.id !== id) }));
     },
 
     restoreCheckpoint(cp) {
@@ -514,6 +588,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
   };
 
-  const value = useMemo(() => store, [st, running, pending, restoredTo, ramGB, liveModel, streamText]);
+  const value = useMemo(
+    () => store,
+    [st, running, pending, restoredTo, ramGB, liveModel, streamText, streamThink, searching, bgTasks, lastBrowse]
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

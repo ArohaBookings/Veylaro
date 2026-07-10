@@ -8,6 +8,8 @@ import { Composer } from "./components/Composer";
 import { ModelSlider, PrivacyHud, Timeline } from "./components/widgets";
 import { IntelligenceModal, NewSessionModal, Onboarding, SettingsModal, SignInModal, UpgradeModal } from "./components/modals";
 import { TerminalView } from "./components/Terminal";
+import { Deck } from "./components/Deck";
+import { Palette } from "./components/Palette";
 import { ChatIc, FileIc, ImageIc, TerminalIc } from "./components/icons";
 
 function Shell() {
@@ -15,6 +17,18 @@ function Shell() {
   const { active, settings, setSettings, onboarded, liveModel } = store;
   const [modal, setModal] = useState<null | "signin" | "new" | "settings" | "upgrade" | "intel">(null);
   const [view, setView] = useState<"chat" | "term">("chat");
+  const [palette, setPalette] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
@@ -75,7 +89,7 @@ function Shell() {
         </span>
       </div>
 
-      <div className="body">
+      <div className="body" style={{ gridTemplateColumns: "var(--side-w) 1fr auto" }}>
         <Sidebar
           onNewSession={() => setModal("new")}
           onSignIn={() => setModal("signin")}
@@ -144,6 +158,8 @@ function Shell() {
             <Composer attachments={attachments} setAttachments={setAttachments} onUpgrade={() => setModal("upgrade")} />
           )}
         </div>
+
+        <Deck />
       </div>
 
       {dragging && (
@@ -161,6 +177,7 @@ function Shell() {
       {modal === "settings" && <SettingsModal onClose={() => setModal(null)} />}
       {modal === "upgrade" && <UpgradeModal onClose={() => setModal(null)} />}
       {modal === "intel" && <IntelligenceModal onClose={() => setModal(null)} />}
+      {palette && <Palette onClose={() => setPalette(false)} openModal={(m) => setModal(m)} setView={setView} />}
     </div>
   );
 }

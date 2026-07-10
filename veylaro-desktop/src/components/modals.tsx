@@ -233,6 +233,18 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           sub="Never stops to ask — plans, edits and commands run straight through."
         />
         <Toggle
+          on={settings.reasoning}
+          onChange={(v) => setSettings({ reasoning: v })}
+          title="Visible reasoning"
+          sub="Watch Laro think before it answers — frontier-style, fully local."
+        />
+        <Toggle
+          on={settings.voice}
+          onChange={(v) => setSettings({ voice: v })}
+          title="Voice replies"
+          sub="Laro reads each recap aloud when a run finishes."
+        />
+        <Toggle
           on={settings.sounds}
           onChange={(v) => setSettings({ sounds: v })}
           title="Completion sounds"
