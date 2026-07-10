@@ -480,7 +480,7 @@ function AdminInner({ userEmail, logout }: { userEmail: string; logout: () => vo
               {VIEWS.map((v) => <option key={v.id} value={v.id} style={{ color: "#000" }}>{v.label}</option>)}
             </select>
             {view !== "interest" && <span className="badge amber" style={{ alignSelf: "center" }}>Sample data — real analytics land with launch</span>}
-            {view === "interest" && <span className="badge green" style={{ alignSelf: "center" }}>● Live — Firestore</span>}
+            {view === "interest" && <span className="badge green" style={{ alignSelf: "center" }}>● Live — Supabase</span>}
             <button className="btn ghost sm" style={{ alignSelf: "center" }} onClick={logout}>Sign out</button>
           </div>
         </div>

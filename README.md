@@ -6,7 +6,7 @@ Twin-blade V, copper star. Laro runs on *your* machine: no cloud, no meters, no 
 
 | Part | Path | What it is |
 | --- | --- | --- |
-| Marketing site | [`axon-code-site/`](axon-code-site/) | veylaroai.com — Vite + React + TS, Firebase (auth, register-interest), Mission Control admin |
+| Marketing site | [`axon-code-site/`](axon-code-site/) | veylaroai.com — Vite + React + TS, Supabase (auth, register-interest), Mission Control admin |
 | Veylaro Code | [`veylaro-desktop/`](veylaro-desktop/) | The downloadable desktop app — Electron + React, drives the local Laro model via Ollama |
 
 ## Quick start
@@ -34,6 +34,6 @@ Update path: retrain / swap the base weights, re-run that command, bump
 ## Launch switches
 
 - `axon-code-site/src/config.ts` → `DOWNLOADS_ENABLED` — flips the ghosted download buttons live.
-- `axon-code-site/FIREBASE-SETUP.md` — the three one-time Firebase console steps.
+- `axon-code-site/SUPABASE-SETUP.md` — confirm the admin email + run one migration.
 
 © 2026 Veylaro Labs.

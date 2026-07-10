@@ -1,11 +1,10 @@
 import { FormEvent, useEffect, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { supabase } from "../lib/supabase";
 import { GlowCard } from "./FX";
 
 /* ============================================================
    Register Interest — the pre-launch capture flow.
-   Public form writes to Firestore `interest`; the admin panel
+   Public form inserts into Supabase `interest`; the admin panel
    below reads it back inside Mission Control.
    ============================================================ */
 
@@ -20,24 +19,23 @@ export function RegisterInterest({ source }: { source: string }) {
     const clean = email.trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) return;
     setState("busy");
+    const { error } = await supabase.from("interest").insert({
+      email: clean,
+      source,
+      ua: navigator.userAgent.slice(0, 200),
+    });
+    if (!error) {
+      setState("done");
+      return;
+    }
+    // table missing / offline — keep it locally so nothing is ever lost
     try {
-      await addDoc(collection(db, "interest"), {
-        email: clean,
-        source,
-        ua: navigator.userAgent.slice(0, 120),
-        ts: serverTimestamp(),
-      });
+      const q = JSON.parse(localStorage.getItem(LS_QUEUE) || "[]");
+      q.push({ email: clean, source, ts: Date.now() });
+      localStorage.setItem(LS_QUEUE, JSON.stringify(q));
       setState("done");
     } catch {
-      // offline or rules not deployed yet — keep it locally so nothing is lost
-      try {
-        const q = JSON.parse(localStorage.getItem(LS_QUEUE) || "[]");
-        q.push({ email: clean, source, ts: Date.now() });
-        localStorage.setItem(LS_QUEUE, JSON.stringify(q));
-        setState("done");
-      } catch {
-        setState("error");
-      }
+      setState("error");
     }
   };
 
@@ -73,22 +71,27 @@ interface Row {
   id: string;
   email: string;
   source: string;
-  ts?: { seconds: number };
+  created_at?: string;
 }
 
 export function InterestAdminPanel() {
   const [rows, setRows] = useState<Row[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [errMsg, setErrMsg] = useState("");
 
   const load = async () => {
     setState("loading");
-    try {
-      const snap = await getDocs(query(collection(db, "interest"), orderBy("ts", "desc")));
-      setRows(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-      setState("ready");
-    } catch {
+    const { data, error } = await supabase
+      .from("interest")
+      .select("id,email,source,created_at")
+      .order("created_at", { ascending: false });
+    if (error) {
+      setErrMsg(error.message);
       setState("error");
+      return;
     }
+    setRows(data as Row[]);
+    setState("ready");
   };
 
   useEffect(() => {
@@ -97,7 +100,7 @@ export function InterestAdminPanel() {
 
   const exportCsv = () => {
     const csv = ["email,source,date", ...rows.map((r) =>
-      `${r.email},${r.source},${r.ts ? new Date(r.ts.seconds * 1000).toISOString() : ""}`
+      `${r.email},${r.source},${r.created_at || ""}`
     )].join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
@@ -114,11 +117,11 @@ export function InterestAdminPanel() {
           <button className="btn ghost sm" onClick={exportCsv} disabled={!rows.length}>Export CSV</button>
         </span>
       </h4>
-      {state === "loading" && <p style={{ color: "var(--dim)", fontSize: 13.5 }}>Loading from Firestore…</p>}
+      {state === "loading" && <p style={{ color: "var(--dim)", fontSize: 13.5 }}>Loading from Supabase…</p>}
       {state === "error" && (
         <p style={{ color: "var(--dim)", fontSize: 13.5 }}>
-          Couldn't read the <code className="inline">interest</code> collection — check that Firestore is created
-          and the rules from <code className="inline">firestore.rules</code> are published.
+          Couldn't read the <code className="inline">interest</code> table ({errMsg}). Make sure the migration in{" "}
+          <code className="inline">supabase/migrations</code> has been run.
         </p>
       )}
       {state === "ready" && rows.length === 0 && (
@@ -127,26 +130,14 @@ export function InterestAdminPanel() {
       {rows.length > 0 && (
         <table className="table">
           <thead>
-            <tr><th>Email</th><th>Source</th><th>When</th><th></th></tr>
+            <tr><th>Email</th><th>Source</th><th>When</th></tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
                 <td>{r.email}</td>
                 <td>{r.source}</td>
-                <td>{r.ts ? new Date(r.ts.seconds * 1000).toLocaleString() : "—"}</td>
-                <td style={{ textAlign: "right" }}>
-                  <button
-                    className="btn ghost sm"
-                    onClick={async () => {
-                      if (!confirm(`Remove ${r.email}?`)) return;
-                      await deleteDoc(doc(db, "interest", r.id));
-                      setRows((p) => p.filter((x) => x.id !== r.id));
-                    }}
-                  >
-                    ×
-                  </button>
-                </td>
+                <td>{r.created_at ? new Date(r.created_at).toLocaleString() : "—"}</td>
               </tr>
             ))}
           </tbody>
