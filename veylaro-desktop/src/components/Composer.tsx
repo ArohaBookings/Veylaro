@@ -19,7 +19,16 @@ export function Composer({
   onUpgrade: () => void;
 }) {
   const store = useStore();
-  const { settings, setSettings, running, pending, locked, account, active, effectivePlan, remaining } = store;
+  const { settings, setSettings, running, pending, locked, account, active, effectivePlan, remaining, billingStatus, verifyBilling } = store;
+
+  const STRIPE_FIX = "https://buy.stripe.com/5kQ8wH5cnfkRfN7576aR200"; // pro monthly
+  const bannerAction = (cta: string) => {
+    if (cta === "verify") verifyBilling();
+  };
+  const bannerHref = (cta: string) =>
+    cta === "resubscribe" || cta === "fix" || cta === "finish" ? STRIPE_FIX : undefined;
+  const bannerLabel = (cta: string) =>
+    cta === "verify" ? "Re-verify" : cta === "resubscribe" ? "Resubscribe" : cta === "finish" ? "Finish checkout" : "Fix payment";
   const [text, setText] = useState("");
 
   // crash-proof drafts: restore what you were typing, per session
@@ -118,14 +127,22 @@ export function Composer({
 
   return (
     <div className="composer-wrap">
-      {account?.billing === "past_due" && (
-        <div className="lock-banner billing">
-          <Lock size={20} style={{ color: "var(--amber)", flexShrink: 0 }} />
+      {billingStatus.banner && (
+        <div className={`lock-banner ${billingStatus.banner.tone === "amber" ? "billing" : "billing info"}`}>
+          <Lock size={20} style={{ color: billingStatus.banner.tone === "amber" ? "var(--amber)" : "var(--champagne)", flexShrink: 0 }} />
           <div className="lt">
-            <b>Payment issue — your {account.plan === "team" ? "Team" : "Pro"} plan is paused.</b>
-            <p>Nothing is deleted. You're on Free limits until the payment goes through, then everything unlocks again automatically.</p>
+            <b>{billingStatus.banner.title}</b>
+            <p>{billingStatus.banner.body}</p>
           </div>
-          <a className="btn primary" href="https://veylaroai.com/#/pricing" target="_blank" rel="noreferrer">Fix payment</a>
+          {bannerHref(billingStatus.banner.cta) ? (
+            <a className="btn primary" href={bannerHref(billingStatus.banner.cta)} target="_blank" rel="noreferrer">
+              {bannerLabel(billingStatus.banner.cta)}
+            </a>
+          ) : (
+            <button className="btn primary" onClick={() => bannerAction(billingStatus.banner!.cta)}>
+              {bannerLabel(billingStatus.banner.cta)}
+            </button>
+          )}
         </div>
       )}
       {plan === "free" && !locked && remaining <= 20 && (

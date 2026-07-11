@@ -10,9 +10,34 @@ import { GlowCard } from "./FX";
 
 const LS_QUEUE = "veylaro.interest.queue";
 
+/** Push any locally-queued signups to Supabase. Safe to call anytime —
+    no-ops if the queue is empty or the table doesn't exist yet. Returns
+    how many synced. This is what makes register-interest self-healing:
+    emails captured before the table existed flush in automatically. */
+export async function flushInterestQueue(): Promise<number> {
+  let queue: { email: string; source: string; ts: number }[];
+  try {
+    queue = JSON.parse(localStorage.getItem(LS_QUEUE) || "[]");
+  } catch {
+    return 0;
+  }
+  if (!queue.length) return 0;
+  const { error } = await supabase
+    .from("interest")
+    .upsert(queue.map((q) => ({ email: q.email, source: q.source, ua: "queued" })), { onConflict: "email", ignoreDuplicates: true });
+  if (error) return 0; // table still missing / offline — keep the queue for next time
+  localStorage.removeItem(LS_QUEUE);
+  return queue.length;
+}
+
 export function RegisterInterest({ source }: { source: string }) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
+
+  // self-heal: on mount, try to sync anything captured while the table was missing
+  useEffect(() => {
+    flushInterestQueue();
+  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -81,6 +106,7 @@ export function InterestAdminPanel() {
 
   const load = async () => {
     setState("loading");
+    await flushInterestQueue(); // sync anything captured before the table existed
     const { data, error } = await supabase
       .from("interest")
       .select("id,email,source,created_at")

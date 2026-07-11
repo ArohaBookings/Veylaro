@@ -822,3 +822,6 @@ a { color: var(--copper); text-decoration: none; }
 .wb-card .wb-b { color: var(--muted); font-size: 12.5px; flex: 1; min-width: 200px; }
 .wb-card .wb-x { position: absolute; top: 8px; right: 10px; border: none; background: none; color: var(--dim); cursor: pointer; font-size: 15px; }
 .wb-card .wb-x:hover { color: var(--text); }
+
+/* billing info-tone banner (trial / canceled) */
+.lock-banner.billing.info { border-color: rgba(238,211,174,0.4); background: linear-gradient(135deg, rgba(238,211,174,0.09), rgba(216,154,102,0.04)); }

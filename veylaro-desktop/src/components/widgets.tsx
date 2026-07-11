@@ -122,7 +122,7 @@ export function PrivacyHud() {
 /* ============ Usage meter ring (free tier) ============ */
 
 export function UsageRing() {
-  const { usage, account, effectivePlan } = useStore();
+  const { usage, effectivePlan, billingStatus } = useStore();
   const plan = effectivePlan;
   if (plan !== "free") {
     return (
@@ -130,7 +130,7 @@ export function UsageRing() {
         <span className="inf">∞</span>
         <div className="lbl">
           <b>Unlimited usage</b>
-          {plan === "pro" ? "Pro" : "Team"} plan — run it all day.
+          {billingStatus.label}{billingStatus.daysLeft != null ? ` · ${billingStatus.daysLeft}d left` : " — run it all day."}
         </div>
       </div>
     );
@@ -166,7 +166,7 @@ export function UsageRing() {
       </div>
       <div className="lbl">
         <b>{left} messages left</b>
-        {account?.billing === "past_due" ? "Plan paused — fix payment" : "Free tier · resets Monday"}
+        {billingStatus.banner ? billingStatus.label : "Free tier · resets Monday"}
       </div>
     </div>
   );

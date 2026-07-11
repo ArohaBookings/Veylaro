@@ -1,8 +1,71 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import {
   Account, AgentEvent, Attachment, BgTask, BrowseStep, Checkpoint, FileStat, FREE_WEEKLY_LIMIT, Msg,
-  PermMode, Plan, Question, Session, Settings, TermLine, Usage, VaultItem,
+  OFFLINE_GRACE_MS, PAST_DUE_GRACE_MS, PermMode, Plan, Question, Session, Settings, TermLine, Usage, VaultItem,
 } from "../types";
+
+/* ============ billing state machine ============ */
+
+export interface BillingBanner {
+  tone: "amber" | "info";
+  title: string;
+  body: string;
+  cta: "fix" | "resubscribe" | "verify" | "finish";
+}
+export interface BillingInfo {
+  plan: Plan; // effective access
+  label: string; // short status for the UI
+  daysLeft?: number;
+  banner: BillingBanner | null;
+}
+
+const DAY = 86400000;
+
+/** The single source of truth for "what can this account do right now".
+    Pure + deterministic so it's trivially testable. */
+export function deriveBilling(account: Account | null, now: number, online: boolean): BillingInfo {
+  if (!account || account.plan === "free") return { plan: "free", label: "Free", banner: null };
+  const paid = account.plan;
+  const b = account.billing ?? "active";
+
+  // offline / stale: a paid plan works offline for OFFLINE_GRACE_MS since the
+  // last successful verification; past that we can't trust it → Free + reconnect.
+  const verifiedAgo = now - (account.lastVerified ?? now);
+  if (verifiedAgo > OFFLINE_GRACE_MS) {
+    return {
+      plan: "free",
+      label: "Verify plan",
+      banner: { tone: "amber", title: "Reconnect to verify your plan", body: `It's been over ${Math.round(OFFLINE_GRACE_MS / DAY)} days since we could confirm your subscription. Go online and re-verify to restore unlimited.`, cta: "verify" },
+    };
+  }
+
+  if (b === "active") return { plan: paid, label: paid === "team" ? "Team" : "Pro", banner: null };
+
+  if (b === "trialing") {
+    const daysLeft = account.periodEnd ? Math.max(0, Math.ceil((account.periodEnd - now) / DAY)) : undefined;
+    return { plan: paid, label: "Trial", daysLeft, banner: { tone: "info", title: `Free trial${daysLeft != null ? ` — ${daysLeft} day${daysLeft === 1 ? "" : "s"} left` : ""}`, body: "Add a payment method before it ends to keep unlimited usage.", cta: "fix" } };
+  }
+
+  if (b === "past_due") {
+    const graceUntil = account.graceUntil ?? now + PAST_DUE_GRACE_MS;
+    if (now < graceUntil) {
+      const daysLeft = Math.max(0, Math.ceil((graceUntil - now) / DAY));
+      return { plan: paid, label: "Payment retrying", daysLeft, banner: { tone: "amber", title: `Payment failed — full access for ${daysLeft} more day${daysLeft === 1 ? "" : "s"}`, body: "Stripe is retrying your card. Fix it now and nothing changes; otherwise you drop to Free when the grace period ends.", cta: "fix" } };
+    }
+    return { plan: "free", label: "Plan paused", banner: { tone: "amber", title: "Plan paused — payment failed", body: "Nothing is deleted. Fix your payment and unlimited turns back on instantly.", cta: "fix" } };
+  }
+
+  if (b === "canceled") {
+    if (account.periodEnd && now < account.periodEnd) {
+      const daysLeft = Math.max(0, Math.ceil((account.periodEnd - now) / DAY));
+      return { plan: paid, label: "Canceled — active", daysLeft, banner: { tone: "info", title: `Subscription ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`, body: "You keep unlimited until then. Resubscribe anytime to stay on.", cta: "resubscribe" } };
+    }
+    return { plan: "free", label: "Canceled", banner: { tone: "info", title: "Subscription ended", body: "You're on Free now. Everything you made is still here — resubscribe whenever you want unlimited back.", cta: "resubscribe" } };
+  }
+
+  // incomplete / unknown → treat as Free until checkout completes
+  return { plan: "free", label: "Checkout incomplete", banner: { tone: "amber", title: "Finish checkout to activate", body: "Your subscription hasn't completed. Finish payment to switch on unlimited.", cta: "finish" } };
+}
 import { buildQuestions, buildRun, needsClarification, simulateTerminal, TimedEvent } from "../engine/demo";
 import { detectLiveModel, LARO_SYSTEM_PROMPT, ollamaChat, warmup } from "../engine/ollama";
 import { resultsToContext, webSearch } from "../engine/search";
@@ -149,6 +212,8 @@ interface Store extends Persisted {
   setOnboarded(): void;
   lastSaved: number; // autosave heartbeat for the titlebar chip
   effectivePlan: Plan; // billing-aware: past_due → free until payment is fixed
+  billingStatus: BillingInfo; // full status + any banner to show
+  verifyBilling(): void; // re-check subscription (refreshes offline grace)
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -183,6 +248,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (window.veylaro?.sysinfo) window.veylaro.sysinfo().then((s) => setRamGB(s.ramGB)).catch(() => {});
     else if ((navigator as any).deviceMemory) setRamGB((navigator as any).deviceMemory);
+  }, []);
+
+  // keep paid plans fresh: any time we're genuinely online, stamp the verify
+  // clock so an active subscriber never trips the offline-grace lapse.
+  useEffect(() => {
+    const reverify = () => {
+      if (navigator.onLine && stRef.current.account && stRef.current.account.plan !== "free") {
+        setSt((p) => (p.account ? { ...p, account: { ...p.account, lastVerified: Date.now() } } : p));
+      }
+    };
+    window.addEventListener("online", reverify);
+    window.addEventListener("focus", reverify);
+    reverify();
+    return () => {
+      window.removeEventListener("online", reverify);
+      window.removeEventListener("focus", reverify);
+    };
   }, []);
 
   // Plug-and-play: detect installed Veylaro weights, switch to them, pre-warm.
@@ -254,8 +336,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const active = st.sessions.find((s) => s.id === st.activeId) || null;
   // payment failed? nothing is deleted — the account simply behaves as Free
   // (limits re-apply) until Stripe confirms payment again.
-  const effectivePlan: Plan =
-    !st.account || st.account.billing === "past_due" ? "free" : st.account.plan;
+  const billingStatus = deriveBilling(st.account, Date.now(), navigator.onLine);
+  const effectivePlan: Plan = billingStatus.plan;
   const remaining = effectivePlan === "free" ? Math.max(0, FREE_WEEKLY_LIMIT - st.usage.used) : Infinity;
   const locked = effectivePlan === "free" && remaining <= 0;
 
@@ -377,15 +459,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     locked,
     lastSaved,
     effectivePlan,
+    billingStatus,
 
     async signIn(name, email, license) {
-      await new Promise((r) => setTimeout(r, 1400)); // "syncing with veylaro.ai"
+      await new Promise((r) => setTimeout(r, 1400)); // "syncing with your Veylaro account"
       const lic = license || "";
-      const plan = /^VEY-TEAM-/i.test(lic) ? "team" : /^VEY-(PRO|PASTDUE)-/i.test(lic) ? "pro" : "free";
-      const billing = /^VEY-PASTDUE-/i.test(lic) ? "past_due" : "active"; // PASTDUE = QA hook
-      const account: Account = { name: name.trim() || email.split("@")[0], email: email.trim(), plan, billing };
+      const now = Date.now();
+      // license shape decides plan + billing state. Real builds get this from
+      // the backend / Stripe; the VEY-* prefixes double as QA hooks for every state.
+      const plan: Plan = /^VEY-TEAM-/i.test(lic) ? "team"
+        : /^VEY-(PRO|TRIAL|PASTDUE|CANCEL)-/i.test(lic) ? "pro" : "free";
+      let billing: Account["billing"] = "active";
+      let periodEnd: number | undefined = plan === "free" ? undefined : now + 30 * DAY;
+      let graceUntil: number | undefined;
+      if (/^VEY-TRIAL-/i.test(lic)) { billing = "trialing"; periodEnd = now + 14 * DAY; }
+      else if (/^VEY-PASTDUE-/i.test(lic)) { billing = "past_due"; graceUntil = now + PAST_DUE_GRACE_MS; }
+      else if (/^VEY-CANCEL-/i.test(lic)) { billing = "canceled"; periodEnd = now + 5 * DAY; }
+      const account: Account = {
+        name: name.trim() || email.split("@")[0], email: email.trim(),
+        plan, billing, periodEnd, graceUntil, lastVerified: now,
+      };
       setSt((p) => ({ ...p, account }));
       return account;
+    },
+
+    verifyBilling() {
+      // re-confirm the subscription online. With the backend this re-fetches
+      // Stripe status; here it refreshes the offline-grace clock.
+      setSt((p) => (p.account ? { ...p, account: { ...p.account, lastVerified: Date.now() } } : p));
     },
 
     signOut() {

@@ -6,16 +6,29 @@ export type Plan = "free" | "pro" | "team";
 export type LangPref = "both" | "plain" | "dev";
 export type EngineKind = "demo" | "ollama";
 
-export type BillingState = "active" | "past_due";
+/** Mirrors Stripe subscription.status. Drives access with grace so a single
+    failed charge never cuts someone off mid-work. */
+export type BillingState = "active" | "trialing" | "past_due" | "canceled" | "incomplete";
 
 export interface Account {
   name: string;
   email: string;
   plan: Plan;
-  /** Stripe subscription health. past_due = payment failed → treated as Free
-      until it's fixed; nothing is deleted, limits just re-apply. */
   billing?: BillingState;
+  /** epoch ms — end of the current paid period (from Stripe). */
+  periodEnd?: number;
+  /** epoch ms — last time we successfully verified the subscription online.
+      Lets a paid plan keep working offline for a generous window. */
+  lastVerified?: number;
+  /** epoch ms — when a past_due grace window ends (access drops to Free after). */
+  graceUntil?: number;
 }
+
+/** Paid access survives this long fully offline before asking to re-verify —
+    a plane flight, a bunker, a dead router never locks a paying user out. */
+export const OFFLINE_GRACE_MS = 14 * 24 * 3600 * 1000;
+/** A failed payment keeps full access this long while Stripe retries. */
+export const PAST_DUE_GRACE_MS = 3 * 24 * 3600 * 1000;
 
 export type SubAgentPref = "off" | "duo" | "auto";
 

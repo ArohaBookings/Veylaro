@@ -174,7 +174,33 @@ const statusBadge = (s: string) =>
     : "dim";
 
 /* =================== views =================== */
+// Day one: no data yet. Flip to true when real analytics are wired.
+const LAUNCHED = false;
+
+function ZeroView({ kpis, note }: { kpis: [string, string | number][]; note?: string }) {
+  return (
+    <>
+      <div className="kpis">
+        {kpis.map(([label, val]) => (
+          <GlowCard className="kpi" key={label}>
+            <div className="kpi-label">{label}</div>
+            <div className="kpi-value">{val}</div>
+            <div className="kpi-delta" style={{ color: "var(--dim)" }}>— no data yet</div>
+          </GlowCard>
+        ))}
+      </div>
+      <GlowCard className="panel" style={{ marginTop: 16, textAlign: "center", padding: "52px 24px" }}>
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 21, marginBottom: 8 }}>You're at the starting line. ✦</div>
+        <p style={{ color: "var(--dim)", fontSize: 14, maxWidth: 480, margin: "0 auto", lineHeight: 1.6 }}>
+          {note || "Every metric is reset to zero — this is day one. Live numbers appear here the moment Veylaro launches and real users arrive. Watch the Register interest tab fill up first."}
+        </p>
+      </GlowCard>
+    </>
+  );
+}
+
 function Overview() {
+  if (!LAUNCHED) return <ZeroView kpis={[["Total users", 0], ["Downloads", 0], ["MRR", "$0"], ["Paying subs", 0]]} />;
   return (
     <>
       <div className="kpis">
@@ -248,6 +274,7 @@ function Overview() {
 function UsersView() {
   const [q, setQ] = useState("");
   const rows = RECENT_USERS.filter((u) => (u[0] + u[1] + u[2] + u[4]).toLowerCase().includes(q.toLowerCase()));
+  if (!LAUNCHED) return <ZeroView kpis={[["Free tier", 0], ["Pro", 0], ["Team seats", 0], ["30-day churn", "—"]]} />;
   return (
     <>
       <div className="kpis">
@@ -289,6 +316,7 @@ function UsersView() {
 }
 
 function DownloadsView() {
+  if (!LAUNCHED) return <ZeroView kpis={[["Total downloads", 0], ["Today", 0], ["Install completion", "—"], ["Download → weekly active", "—"]]} />;
   return (
     <>
       <div className="kpis">
@@ -325,6 +353,7 @@ function DownloadsView() {
 }
 
 function RevenueView() {
+  if (!LAUNCHED) return <ZeroView kpis={[["MRR", "$0"], ["ARR run-rate", "$0"], ["ARPU", "$0"], ["Annual plan share", "—"]]} note="Revenue starts counting the moment your first Stripe subscription lands. Pricing is live; the counter is at zero." />;
   return (
     <>
       <div className="kpis">
@@ -367,6 +396,7 @@ function RevenueView() {
 }
 
 function ReleasesView() {
+  if (!LAUNCHED) return <ZeroView kpis={[["Current version", "v1.0.0"], ["Fleet on latest", "—"], ["Update opt-in rate", "—"], ["Crash-free sessions", "—"]]} note="v1.0.0 is the launch build. Fleet health numbers appear once installs are out in the wild." />;
   return (
     <>
       <div className="kpis">
@@ -391,6 +421,7 @@ function ReleasesView() {
 }
 
 function SupportView() {
+  if (!LAUNCHED) return <ZeroView kpis={[["Open tickets", 0], ["Median first response", "—"], ["CSAT (30d)", "—"], ["Refund rate", "—"]]} />;
   return (
     <>
       <div className="kpis">
@@ -467,7 +498,7 @@ function AdminInner({ userEmail, logout }: { userEmail: string; logout: () => vo
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22, flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ fontSize: 26 }}>{VIEWS.find((v) => v.id === view)?.label}</h1>
-            <p style={{ color: "var(--dim)", fontSize: 13.5 }}>Monday, July 7 2026 · sample data for the demo environment</p>
+            <p style={{ color: "var(--dim)", fontSize: 13.5 }}>{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })} · pre-launch — starting from zero</p>
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {/* mobile view switcher */}
