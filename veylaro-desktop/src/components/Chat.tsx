@@ -33,6 +33,73 @@ function glossify(text: string) {
   });
 }
 
+/* ---- compact rows: the Claude-Code-style collapsed stream ---- */
+
+function CompactFile({ ev }: { ev: Extract<AgentEvent, { kind: "file" }> }) {
+  const [open, setOpen] = useState(false);
+  const name = ev.path.split(/[\\/]/).pop();
+  return (
+    <div className="ev crow-wrap">
+      <button className="crow" onClick={() => setOpen((v) => !v)}>
+        <span className={`c-op ${ev.op}`}>{ev.op === "create" ? "Created" : "Edited"}</span>
+        <span className="c-name">{name}</span>
+        <span className="c-plus">+{ev.plus}</span>
+        <span className="c-minus">−{ev.minus}</span>
+        <span className={`c-chev ${open ? "open" : ""}`}>›</span>
+      </button>
+      {open && (
+        <div className="crow-body">
+          <div className="c-path">{ev.path}</div>
+          {ev.snippet ? (
+            <div className="diff">
+              {ev.snippet.del.map((l, i) => <div key={`d${i}`} className="del">- {l}</div>)}
+              {ev.snippet.add.map((l, i) => <div key={`a${i}`} className="add">+ {l}</div>)}
+            </div>
+          ) : (
+            <div className="c-path">diff applied inside the scope — open the file to review</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompactCmd({ ev }: { ev: Extract<AgentEvent, { kind: "cmd" }> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="ev crow-wrap">
+      <button className="crow" onClick={() => setOpen((v) => !v)}>
+        <span className={`c-op ${ev.ok ? "ran" : "fail"}`}>{ev.ok ? "Ran a command" : "Command failed"}</span>
+        <span className="c-name mono">{ev.cmd.length > 44 ? ev.cmd.slice(0, 44) + "…" : ev.cmd}</span>
+        <span className={`c-chev ${open ? "open" : ""}`}>›</span>
+      </button>
+      {open && (
+        <div className="crow-body">
+          <div className="c-cmdfull">❯ {ev.cmd}</div>
+          <div className="c-out">{ev.out}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---- live "thinking / working" line with elapsed time + token estimate ---- */
+
+function WorkingLine({ mode, streamedChars }: { mode: "think" | "work"; streamedChars: number }) {
+  const [sec, setSec] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setSec((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const tokens = streamedChars > 0 ? Math.round(streamedChars / 4) : Math.max(1, Math.round(sec * 32));
+  return (
+    <span className="working-line">
+      <span className="dots"><i /><i /><i /></span>
+      {mode === "think" ? "Laro is thinking" : "Laro is working"}… {sec}s · ~{tokens} tokens
+    </span>
+  );
+}
+
 /* ---- event renderers ---- */
 
 function EventView({ ev, lang }: { ev: AgentEvent; lang: LangPref }) {
@@ -45,40 +112,11 @@ function EventView({ ev, lang }: { ev: AgentEvent; lang: LangPref }) {
         </div>
       );
     case "think":
-      return (
-        <div className="ev ev-think">
-          <span className="tw"><Sparkle size={13} /></span>
-          {ev.text}
-        </div>
-      );
+      return <div className="ev think-inline">{ev.text}</div>;
     case "file":
-      return (
-        <div className="ev ev-file">
-          <div className="fhead">
-            <span className={`op ${ev.op}`}>{ev.op === "create" ? "new file" : "edit"}</span>
-            <span className="fp">{ev.path}</span>
-            <span style={{ color: "var(--green)", fontWeight: 600 }}>+{ev.plus}</span>
-            <span style={{ color: "var(--red)", fontWeight: 600 }}>−{ev.minus}</span>
-          </div>
-          {ev.snippet && (
-            <div className="diff">
-              {ev.snippet.del.map((l, i) => (
-                <div key={`d${i}`} className="del">- {l}</div>
-              ))}
-              {ev.snippet.add.map((l, i) => (
-                <div key={`a${i}`} className="add">+ {l}</div>
-              ))}
-            </div>
-          )}
-        </div>
-      );
+      return <CompactFile ev={ev} />;
     case "cmd":
-      return (
-        <div className="ev ev-cmd">
-          <div className="c">{ev.cmd}</div>
-          <div className="o">{ev.out}</div>
-        </div>
-      );
+      return <CompactCmd ev={ev} />;
     case "verify":
       return (
         <div className={`ev ev-verify ${ev.ok ? "" : "bad"}`}>
@@ -145,7 +183,7 @@ function EventView({ ev, lang }: { ev: AgentEvent; lang: LangPref }) {
     case "reasoning":
       return (
         <details className="ev ev-reason">
-          <summary><Eye size={13} /> Reasoning — how Laro got there</summary>
+          <summary><Eye size={13} /> Reasoning — how Laro got there · ~{Math.max(1, Math.round(ev.text.length / 4))} tokens</summary>
           <div className="rz-body">{ev.text}</div>
         </details>
       );
@@ -344,7 +382,7 @@ function AgentMsg({ m, isLast }: { m: Msg; isLast: boolean }) {
         )}
         {isLast && running && streamThink && !streamText && (
           <div className="ev ev-reason live">
-            <div className="rz-head"><Eye size={13} /> Laro is reasoning<span className="dots" style={{ marginLeft: 6 }}><i /><i /><i /></span></div>
+            <div className="rz-head"><Eye size={13} /> <WorkingLine mode="think" streamedChars={streamThink.length} /></div>
             <div className="rz-body">{streamThink}</div>
           </div>
         )}
@@ -359,11 +397,8 @@ function AgentMsg({ m, isLast }: { m: Msg; isLast: boolean }) {
         {showPending && pending?.type === "gate" && <GateCard />}
         {showPending && pending?.type === "plan" && <PlanApproval />}
         {showPending && pending?.type === "ask" && <QuestionWizard />}
-        {isLast && running && !done && !streaming && (
-          <span className="working-line">
-            <span className="dots"><i /><i /><i /></span>
-            Laro is working — everything stays on this machine
-          </span>
+        {isLast && running && !done && !streaming && !streamThink && (
+          <WorkingLine mode="work" streamedChars={0} />
         )}
       </div>
     </div>

@@ -285,7 +285,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         // pre-warm only when the app will actually use the live engine
         if (!st.autoEngineDone || st.settings.engine === "ollama") {
-          const bg = pushBg("Warming up Laro weights", found);
+          const bg = pushBg("Waking Laro up", found);
           warmup(st.settings.ollamaUrl, found).then(() => doneBg(bg, true, `${found} hot — first token is instant`));
         }
       }
@@ -349,7 +349,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const appendEvent = (sessionId: string, msgId: string, ev: AgentEvent) => {
     if (ev.kind === "browse") {
       setLastBrowse({ url: ev.url, steps: ev.steps, summary: ev.summary, ts: Date.now() });
-      const bg = pushBg("Driving the Viewport", ev.summary);
+      const bg = pushBg("Testing your app — clicking through it", ev.summary);
       setTimeout(() => doneBg(bg), ev.steps.length * 700 + 800);
       setSt((p) => (p.settings.deckOpen ? p : { ...p, settings: { ...p.settings, deckOpen: true } }));
     }
@@ -538,7 +538,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       const userMsg: Msg = { id: uid(), role: "user", text, attachments, ts: Date.now() };
       const agentMsg: Msg = { id: uid(), role: "agent", events: [], ts: Date.now() };
-      mutSession(active.id, (s) => ({ ...s, msgs: [...s.msgs, userMsg, agentMsg] }));
+      mutSession(active.id, (s) => {
+        // first message names the chat — short form of the prompt
+        let title = s.title;
+        if (s.msgs.length === 0 && text.trim()) {
+          const clean = text.trim().replace(/\s+/g, " ");
+          title = clean.length > 34 ? clean.slice(0, 34).replace(/\s+\S*$/, "") + "…" : clean;
+        }
+        return { ...s, title, msgs: [...s.msgs, userMsg, agentMsg] };
+      });
       setSt((p) => {
         if (effectivePlan !== "free") return p;
         const usage = { weekKey: weekKey(), used: p.usage.used + 1 };
@@ -636,6 +644,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         internet: settings.internet && navigator.onLine,
         planMode: settings.planMode,
         laneCount,
+        images: attachments.length,
       });
       play(active.id, agentMsg.id, script, settings.permMode);
     },
@@ -709,7 +718,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         mutSession(active.id, (s) => ({ ...s, term: [] }));
         return;
       }
-      const bg = pushBg("Terminal", c.length > 42 ? c.slice(0, 42) + "…" : c);
+      const bg = pushBg("Running your command", c.length > 42 ? c.slice(0, 42) + "…" : c);
       let res: { out: string; ok: boolean };
       if (window.veylaro?.exec) {
         try {

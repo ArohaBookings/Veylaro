@@ -253,6 +253,7 @@ export function buildRun(opts: {
   internet?: boolean;
   planMode?: boolean;
   laneCount?: number;
+  images?: number;
   answers?: Record<string, string>;
 }): TimedEvent[] {
   const { prompt, scope, model, personality } = opts;
@@ -270,6 +271,19 @@ export function buildRun(opts: {
       dev: `read ${s} · scope-locked · 0 bytes of code leave this machine`,
     },
   });
+
+  if (opts.images) {
+    out.push({
+      delay: d(700),
+      ev: {
+        kind: "say",
+        plain: opts.images === 1
+          ? "Studied your screenshot — I'll use it as the reference for what to build."
+          : `Studied your ${opts.images} screenshots — using them as the reference for what to build.`,
+        dev: `vision: ${opts.images} image${opts.images === 1 ? "" : "s"} received · analyzed locally`,
+      },
+    });
+  }
 
   if (opts.answers && Object.keys(opts.answers).length) {
     out.push({

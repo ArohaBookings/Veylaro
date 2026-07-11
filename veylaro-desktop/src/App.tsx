@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { StoreProvider, uid, useStore } from "./state/store";
-import { Attachment, LangPref } from "./types";
+import { Attachment } from "./types";
 import { VeylaroMark } from "./components/Logo";
 import { Sidebar } from "./components/Sidebar";
 import { Chat } from "./components/Chat";
 import { Composer } from "./components/Composer";
-import { ModelSlider, PrivacyHud, Timeline } from "./components/widgets";
+import { Timeline } from "./components/widgets";
 import { IntelligenceModal, NewSessionModal, Onboarding, SettingsModal, SignInModal, UpgradeModal } from "./components/modals";
 import { TerminalView } from "./components/Terminal";
 import { Deck } from "./components/Deck";
@@ -112,13 +112,14 @@ function Shell() {
         />
 
         <div className="main">
-          <div className="chat-head">
-            <ModelSlider />
+          <div className="chat-head slim">
+            <span className="sess-title" title={active?.scope || ""}>{active ? active.title : "Veylaro Code"}</span>
             {active && (
               <span className="scope-chip" title={active.scope}>
-                <FileIc size={12} /> <span className="p">{active.scope}</span> · scope-locked
+                <FileIc size={12} /> <span className="p">{active.scope.split(/[\\/]/).pop()}</span>
               </span>
             )}
+            <span className="head-spacer" />
             {active && (
               <div className="seg" role="radiogroup" aria-label="View">
                 <button className={view === "chat" ? "on" : ""} onClick={() => setView("chat")}>
@@ -129,15 +130,6 @@ function Shell() {
                 </button>
               </div>
             )}
-            <span className="head-spacer" />
-            <div className="seg" role="radiogroup" aria-label="Explanation style">
-              {(["both", "plain", "dev"] as LangPref[]).map((l) => (
-                <button key={l} className={settings.lang === l ? "on" : ""} onClick={() => setSettings({ lang: l })}>
-                  {l === "both" ? "Both" : l === "plain" ? "Plain" : "Dev"}
-                </button>
-              ))}
-            </div>
-            <PrivacyHud />
           </div>
 
           {active ? (

@@ -825,3 +825,64 @@ a { color: var(--copper); text-decoration: none; }
 
 /* billing info-tone banner (trial / canceled) */
 .lock-banner.billing.info { border-color: rgba(238,211,174,0.4); background: linear-gradient(135deg, rgba(238,211,174,0.09), rgba(216,154,102,0.04)); }
+
+/* ============ clean-stream overhaul ============ */
+.chat-head.slim { padding: 9px 18px; gap: 12px; }
+.sess-title {
+  font-family: var(--font-display); font-weight: 600; font-size: 14.5px; letter-spacing: -0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%;
+}
+
+/* thinking out loud — muted italic, Claude-Code style */
+.think-inline { color: var(--dim); font-style: italic; font-size: 13px; padding-left: 2px; }
+
+/* compact expandable rows (files & commands) */
+.crow-wrap { display: flex; flex-direction: column; }
+.crow {
+  display: flex; align-items: center; gap: 9px; width: fit-content; max-width: 100%;
+  background: none; border: none; cursor: pointer; padding: 3px 6px 3px 2px; border-radius: 8px;
+  font-size: 13px; color: var(--muted); text-align: left; transition: background 0.15s;
+}
+.crow:hover { background: rgba(255,255,255,0.04); }
+.crow .c-op { font-weight: 600; color: var(--text); }
+.crow .c-op.create { color: var(--green); }
+.crow .c-op.edit { color: var(--copper); }
+.crow .c-op.fail { color: var(--red); }
+.crow .c-name { font-family: var(--font-mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crow .c-plus { color: var(--green); font-weight: 600; font-size: 12px; }
+.crow .c-minus { color: var(--red); font-weight: 600; font-size: 12px; }
+.crow .c-chev { color: var(--dim); transition: transform 0.2s; font-weight: 700; }
+.crow .c-chev.open { transform: rotate(90deg); }
+.crow-body {
+  margin: 2px 0 4px 8px; border-left: 2px solid var(--border); padding: 6px 0 6px 12px;
+  animation: rise-in 0.25s var(--ease-out);
+}
+.crow-body .c-path { font-family: var(--font-mono); font-size: 11px; color: var(--dim); margin-bottom: 4px; }
+.crow-body .diff { border: 1px solid var(--border); border-radius: 9px; font-family: var(--font-mono); font-size: 12px; line-height: 1.7; padding: 6px 0; overflow: hidden; }
+.crow-body .c-cmdfull { font-family: var(--font-mono); font-size: 12px; color: var(--champagne); }
+.crow-body .c-out { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: pre-wrap; margin-top: 3px; }
+
+/* model menu — bottom bar, image-2 style */
+.mmenu { position: relative; }
+.mmenu-btn {
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  font-size: 11.5px; font-weight: 600; border-radius: 9px; padding: 6px 11px; cursor: pointer; transition: all 0.2s;
+}
+.mmenu-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.mmenu-btn .mm-car { color: var(--dim); margin-left: 3px; }
+.mmenu-pop {
+  position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 80; width: 240px;
+  background: #17120e; border: 1px solid var(--border-strong); border-radius: 13px; overflow: hidden;
+  box-shadow: 0 22px 60px -18px rgba(0,0,0,0.85); animation: rise-in 0.2s var(--ease-out);
+}
+.mmenu-h { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 10px 13px 5px; }
+.mmenu-item {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; padding: 9px 13px; transition: background 0.15s;
+}
+.mmenu-item:hover { background: rgba(255,255,255,0.05); }
+.mmenu-item.on { background: rgba(216,154,102,0.08); }
+.mm-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.mm-desc { font-size: 11px; color: var(--dim); flex: 1; }
+.mm-check { color: var(--copper); font-weight: 700; }
+.mmenu-f { font-size: 10px; color: var(--dim); padding: 7px 13px 10px; border-top: 1px solid var(--border); }

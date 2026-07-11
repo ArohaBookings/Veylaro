@@ -2,6 +2,53 @@ import { useEffect, useRef, useState } from "react";
 import { useStore, uid } from "../state/store";
 import { Attachment, PermMode } from "../types";
 import { Globe, ImageIc, Lock, Map, Mic, Send } from "./icons";
+import { MODELS, ModelId } from "../types";
+
+/** Claude-Code-style model picker living in the composer bar. */
+function ModelMenu() {
+  const { settings, setSettings } = useStore();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, []);
+  return (
+    <div className="mmenu" ref={ref}>
+      {open && (
+        <div className="mmenu-pop">
+          <div className="mmenu-h">Models</div>
+          {(["lite", "max"] as ModelId[]).map((m) => (
+            <button
+              key={m}
+              className={`mmenu-item ${settings.model === m ? "on" : ""}`}
+              onClick={() => {
+                setSettings({ model: m });
+                setOpen(false);
+              }}
+            >
+              <span className="mm-name">{MODELS[m].name}</span>
+              <span className="mm-desc">{m === "lite" ? "fast · light machines" : "smartest · full weights"}</span>
+              {settings.model === m && <span className="mm-check">✓</span>}
+            </button>
+          ))}
+          <div className="mmenu-f">Auto-picked for your hardware · final weights land with training</div>
+        </div>
+      )}
+      <button className="mmenu-btn" onClick={() => setOpen((v) => !v)} title={MODELS[settings.model].blurb}>
+        {MODELS[settings.model].name} <span className="mm-car">{open ? "▴" : "▾"}</span>
+      </button>
+    </div>
+  );
+}
 
 const PERM_LABELS: Record<PermMode, string> = {
   ask: "Ask before edits & commands",
@@ -227,6 +274,7 @@ export function Composer({
           >
             <Map size={15} />
           </button>
+          <ModelMenu />
           <span className="perm">
             <select
               value={settings.permMode}
