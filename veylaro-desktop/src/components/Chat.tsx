@@ -199,11 +199,109 @@ function EventView({ ev, lang }: { ev: AgentEvent; lang: LangPref }) {
           <div className="bsum">✓ {ev.summary}</div>
         </div>
       );
+    case "radar":
+      return <RadarCard items={ev.items} />;
+    case "sim":
+      return (
+        <div className="ev sim-card">
+          <div className="sim-h">🔮 Future Simulator — if you approve this plan</div>
+          <div className="sim-stat">{ev.files.length} file{ev.files.length === 1 ? "" : "s"} · <b className="c-plus">+{ev.plus}</b> <b className="c-minus">−{ev.minus}</b> predicted</div>
+          <div className="sim-cols">
+            <div><span className="sim-t good">Why it's safe</span>{ev.pros.map((p) => <div key={p} className="sim-li">✓ {p}</div>)}</div>
+            <div><span className="sim-t warn">Watch for</span>{ev.cons.map((c) => <div key={c} className="sim-li">• {c}</div>)}</div>
+          </div>
+        </div>
+      );
     case "gate":
     case "ask":
     case "done":
       return null;
   }
+}
+
+/* Weakness Radar — Laro proactively flags risk, one click to fix */
+function RadarCard({ items }: { items: { path: string; issue: string; sev: string }[] }) {
+  const store = useStore();
+  const [sent, setSent] = useState(false);
+  return (
+    <div className="ev radar-card">
+      <div className="radar-h">📡 Weakness Radar — spotted while I was in there</div>
+      {items.map((it, i) => (
+        <div key={i} className="radar-li">
+          <span className={`radar-sev ${it.sev}`}>{it.sev}</span>
+          <span>{it.issue}</span>
+        </div>
+      ))}
+      <button
+        className="btn ghost sm"
+        disabled={sent || store.running || !!store.pending}
+        onClick={() => {
+          setSent(true);
+          store.send(`clean up the weak spots you flagged: ${items.map((i) => i.issue).join("; ")}`, []);
+        }}
+      >
+        {sent ? "On it ✦" : "Clean these up"}
+      </button>
+    </div>
+  );
+}
+
+/* Codex-style end-of-run rundown: duration + every file, Undo + Review */
+function RunDown({ m }: { m: Msg }) {
+  const store = useStore();
+  const [review, setReview] = useState(false);
+  const done = (m.events || []).find((e) => e.kind === "done");
+  if (!done || done.kind !== "done") return null;
+  const fileEvs = (m.events || []).filter((e): e is Extract<AgentEvent, { kind: "file" }> => e.kind === "file");
+  if (!fileEvs.length) return null;
+  const agg: Record<string, { plus: number; minus: number; op: string }> = {};
+  fileEvs.forEach((f) => {
+    const a = agg[f.path] || { plus: 0, minus: 0, op: f.op };
+    a.plus += f.plus; a.minus += f.minus;
+    if (f.op === "create") a.op = "create";
+    agg[f.path] = a;
+  });
+  const plus = fileEvs.reduce((n, f) => n + f.plus, 0);
+  const minus = fileEvs.reduce((n, f) => n + f.minus, 0);
+  const secs = Math.max(1, Math.round(done.ms / 1000));
+  const cp = store.active?.checkpoints.find((c) => c.ts >= m.ts);
+  return (
+    <div className="ev rundown">
+      <div className="rd-head">
+        <span className="rd-time">Worked for {secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`}</span>
+        <span className="rd-files">Edited {Object.keys(agg).length} file{Object.keys(agg).length === 1 ? "" : "s"} <b className="c-plus">+{plus}</b> <b className="c-minus">−{minus}</b></span>
+        <span style={{ flex: 1 }} />
+        {cp && (
+          <button className="btn ghost sm" onClick={() => confirm("Undo this whole run? Every change rolls back.") && store.restoreCheckpoint(cp)}>
+            Undo ↩
+          </button>
+        )}
+        <button className="btn ghost sm" onClick={() => setReview((v) => !v)}>{review ? "Close" : "Review"}</button>
+      </div>
+      <div className="rd-list">
+        {Object.entries(agg).map(([path, a]) => (
+          <div key={path} className="rd-row">
+            <span className="rd-path">{path}</span>
+            <span className="c-plus">+{a.plus}</span>
+            <span className="c-minus">−{a.minus}</span>
+          </div>
+        ))}
+      </div>
+      {review && (
+        <div className="rd-review">
+          {fileEvs.filter((f) => f.snippet).map((f, i) => (
+            <div key={i}>
+              <div className="c-path">{f.path}</div>
+              <div className="diff">
+                {f.snippet!.del.map((l, j) => <div key={`d${j}`} className="del">- {l}</div>)}
+                {f.snippet!.add.map((l, j) => <div key={`a${j}`} className="add">+ {l}</div>)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function RecapView({ title, bullets, commit }: { title: string; bullets: string[]; commit: string }) {
@@ -270,7 +368,7 @@ function GateCard() {
 /* ---- plan approval (plan mode) ---- */
 
 function PlanApproval() {
-  const { pending, resolvePlan } = useStore();
+  const { pending, resolvePlan, previewPlan } = useStore();
   if (!pending || pending.type !== "plan") return null;
   return (
     <div className="gate plan-gate">
@@ -279,6 +377,7 @@ function PlanApproval() {
       <div className="gbtns">
         <button className="btn primary sm" onClick={() => resolvePlan(true)}>Approve — start building</button>
         <button className="btn ghost sm" onClick={() => resolvePlan(false)}>Re-plan</button>
+        <button className="btn ghost sm" onClick={() => previewPlan()}>🔮 Preview outcome</button>
       </div>
     </div>
   );
@@ -397,6 +496,7 @@ function AgentMsg({ m, isLast }: { m: Msg; isLast: boolean }) {
         {showPending && pending?.type === "gate" && <GateCard />}
         {showPending && pending?.type === "plan" && <PlanApproval />}
         {showPending && pending?.type === "ask" && <QuestionWizard />}
+        {done && <RunDown m={m} />}
         {isLast && running && !done && !streaming && !streamThink && (
           <WorkingLine mode="work" streamedChars={0} />
         )}

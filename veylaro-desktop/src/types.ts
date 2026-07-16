@@ -88,6 +88,13 @@ export interface SubAgentLane {
   task: string;
 }
 
+export interface SideMsg {
+  id: string;
+  role: "you" | "laro";
+  text: string;
+  ts: number;
+}
+
 export interface TermLine {
   id: string;
   cmd: string;
@@ -148,6 +155,8 @@ export type AgentEvent =
   | { kind: "agents"; lanes: SubAgentLane[] }
   | { kind: "browse"; url: string; steps: BrowseStep[]; summary: string }
   | { kind: "reasoning"; text: string }
+  | { kind: "radar"; items: { path: string; issue: string; sev: "low" | "med" | "high" }[] }
+  | { kind: "sim"; files: string[]; plus: number; minus: number; pros: string[]; cons: string[] }
   | { kind: "checkpoint"; label: string }
   | { kind: "recap"; title: string; bullets: string[]; commit: string }
   | { kind: "gate"; what: string; detail: string }

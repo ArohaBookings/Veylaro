@@ -230,6 +230,29 @@ export function Home() {
         </div>
       </div>
 
+      {/* ============ MISSION ============ */}
+      <section className="section tight">
+        <div className="container center">
+          <Reveal>
+            <span className="eyebrow"><span className="dot" />Our mission</span>
+            <h2 className="h-display" style={{ fontSize: "clamp(34px, 5.6vw, 72px)", maxWidth: 900, margin: "0 auto" }}>
+              We believe everyone should <span className="grad-text">own powerful AI.</span>
+            </h2>
+            <p className="lede" style={{ marginTop: 24 }}>
+              Not rent it. Not queue for it. Not hand your work to someone else's servers. Intelligence
+              that lives on your machine, answers to you, and gets smarter every night — that's the whole company.
+            </p>
+          </Reveal>
+          <Reveal delay={150}>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginTop: 34 }}>
+              <span className="chip">✦ Yours — it lives on your hardware</span>
+              <span className="chip">✦ Private by physics, not by promise</span>
+              <span className="chip">✦ Always getting smarter — even while you sleep</span>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
       {/* ============ TERMINAL DEMO ============ */}
       <section className="section">
         <div className="container split split-terminal">

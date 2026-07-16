@@ -1,6 +1,35 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { BrowseStep } from "../types";
+
+/* Side chat — talk to Laro's featherweight side while the heavy work runs */
+function SideChat() {
+  const { sideChat, sendSideChat } = useStore();
+  const [text, setText] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [(sideChat || []).length]);
+  return (
+    <div className="schat">
+      <div className="schat-scroll">
+        {!(sideChat || []).length && (
+          <div className="schat-hint">✦ hey — quick questions live here. i run featherweight so the main build never slows down.</div>
+        )}
+        {(sideChat || []).map((m) => (
+          <div key={m.id} className={`schat-m ${m.role}`}>{m.text}</div>
+        ))}
+        <div ref={endRef} />
+      </div>
+      <div className="schat-bar">
+        <input
+          value={text}
+          placeholder="chat with laro…"
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) { sendSideChat(text); setText(""); } }}
+        />
+      </div>
+    </div>
+  );
+}
 import { Bolt, Check, Globe, TerminalIc, Warn, X } from "./icons";
 
 /* ============================================================
@@ -232,7 +261,7 @@ function Tasks() {
 /* ---- the deck shell ---- */
 export function Deck() {
   const { settings, setSettings, bgTasks } = useStore();
-  const [tab, setTab] = useState<"viewport" | "tasks">("viewport");
+  const [tab, setTab] = useState<"viewport" | "tasks" | "chat">("viewport");
   const dragging = useRef(false);
 
   useEffect(() => {
@@ -274,12 +303,15 @@ export function Deck() {
           <button className={tab === "tasks" ? "on" : ""} onClick={() => setTab("tasks")}>
             Tasks{runningCount > 0 ? ` · ${runningCount}` : ""}
           </button>
+          <button className={tab === "chat" ? "on" : ""} onClick={() => setTab("chat")}>
+            Chat
+          </button>
         </div>
         <button className="icon-btn" style={{ width: 28, height: 28 }} title="Collapse deck" onClick={() => setSettings({ deckOpen: false })}>
           <X size={13} />
         </button>
       </div>
-      {tab === "viewport" ? <Viewport /> : <Tasks />}
+      {tab === "viewport" ? <Viewport /> : tab === "tasks" ? <Tasks /> : <SideChat />}
     </aside>
   );
 }

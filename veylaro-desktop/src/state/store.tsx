@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import {
   Account, AgentEvent, Attachment, BgTask, BrowseStep, Checkpoint, FileStat, FREE_WEEKLY_LIMIT, Msg,
-  OFFLINE_GRACE_MS, PAST_DUE_GRACE_MS, PermMode, Plan, Question, Session, Settings, TermLine, Usage, VaultItem,
+  OFFLINE_GRACE_MS, PAST_DUE_GRACE_MS, PermMode, Plan, Question, Session, Settings, SideMsg, TermLine, Usage, VaultItem,
 } from "../types";
 
 /* ============ billing state machine ============ */
@@ -66,7 +66,7 @@ export function deriveBilling(account: Account | null, now: number, online: bool
   // incomplete / unknown → treat as Free until checkout completes
   return { plan: "free", label: "Checkout incomplete", banner: { tone: "amber", title: "Finish checkout to activate", body: "Your subscription hasn't completed. Finish payment to switch on unlimited.", cta: "finish" } };
 }
-import { buildQuestions, buildRun, needsClarification, simulateTerminal, TimedEvent } from "../engine/demo";
+import { buildQuestions, buildRun, needsClarification, sideChatReply, simulateTerminal, TimedEvent } from "../engine/demo";
 import { detectLiveModel, LARO_SYSTEM_PROMPT, ollamaChat, warmup } from "../engine/ollama";
 import { resultsToContext, webSearch } from "../engine/search";
 import { subAgentLanes } from "../engine/tiers";
@@ -97,6 +97,7 @@ interface Persisted {
   usage: Usage;
   onboarded: boolean;
   vault: VaultItem[];
+  sideChat?: SideMsg[]; // the featherweight companion chat
   autoEngineDone?: boolean; // live-weights auto-switch runs once, ever
 }
 
@@ -209,6 +210,8 @@ interface Store extends Persisted {
   saveToVault(item: Omit<VaultItem, "id" | "ts">): void;
   removeVaultItem(id: string): void;
   setDraft(sessionId: string, draft: string): void;
+  sendSideChat(text: string): void;
+  previewPlan(): void; // Future Simulator: predicted outcome of the pending plan
   setOnboarded(): void;
   lastSaved: number; // autosave heartbeat for the titlebar chip
   effectivePlan: Plan; // billing-aware: past_due → free until payment is fixed
@@ -248,6 +251,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (window.veylaro?.sysinfo) window.veylaro.sysinfo().then((s) => setRamGB(s.ramGB)).catch(() => {});
     else if ((navigator as any).deviceMemory) setRamGB((navigator as any).deviceMemory);
+  }, []);
+
+  // self-watch: Laro notices when its own UI glitches and logs it honestly
+  useEffect(() => {
+    const onErr = (e: ErrorEvent) => pushBg("I hit a glitch in my own UI", String(e.message).slice(0, 80)) && undefined;
+    const onRej = (e: PromiseRejectionEvent) => pushBg("Something in me misfired — logged it", String(e.reason).slice(0, 80)) && undefined;
+    window.addEventListener("error", onErr);
+    window.addEventListener("unhandledrejection", onRej);
+    return () => {
+      window.removeEventListener("error", onErr);
+      window.removeEventListener("unhandledrejection", onRej);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // keep paid plans fresh: any time we're genuinely online, stamp the verify
@@ -346,7 +362,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const mutSession = (id: string, fn: (s: Session) => Session) =>
     setSt((p) => ({ ...p, sessions: p.sessions.map((s) => (s.id === id ? fn({ ...s }) : s)) }));
 
-  const appendEvent = (sessionId: string, msgId: string, ev: AgentEvent) => {
+  const appendEvent = (sessionId: string, msgId: string, evIn: AgentEvent) => {
+    const ev = evIn;
     if (ev.kind === "browse") {
       setLastBrowse({ url: ev.url, steps: ev.steps, summary: ev.summary, ts: Date.now() });
       const bg = pushBg("Testing your app — clicking through it", ev.summary);
@@ -359,31 +376,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       window.speechSynthesis.speak(u);
     }
     return mutSession(sessionId, (s) => {
-      const msgs = s.msgs.map((m) => (m.id === msgId ? { ...m, events: [...(m.events || []), ev] } : m));
+      // const snapshot keeps TypeScript narrowing intact after the ms stamp
+      const m0 = s.msgs.find((m) => m.id === msgId);
+      const e: AgentEvent =
+        ev.kind === "done" && ev.ms === 0 && m0 ? { kind: "done", ms: Date.now() - m0.ts } : ev;
+      const msgs = s.msgs.map((m) => (m.id === msgId ? { ...m, events: [...(m.events || []), e] } : m));
       let files = s.files;
       let checkpoints = s.checkpoints;
-      if (ev.kind === "file") {
+      if (e.kind === "file") {
         files = { ...files };
         Object.values(files).forEach((f) => (f.active = false));
-        const prev = files[ev.path];
-        files[ev.path] = {
-          path: ev.path,
-          plus: (prev?.plus || 0) + ev.plus,
-          minus: (prev?.minus || 0) + ev.minus,
+        const prev = files[e.path];
+        files[e.path] = {
+          path: e.path,
+          plus: (prev?.plus || 0) + e.plus,
+          minus: (prev?.minus || 0) + e.minus,
           active: true,
           verified: null,
         };
       }
-      if (ev.kind === "verify") {
+      if (e.kind === "verify") {
         files = { ...files };
         Object.values(files).forEach((f) => {
-          files[f.path] = { ...f, verified: ev.ok, active: false };
+          files[f.path] = { ...f, verified: e.ok, active: false };
         });
       }
-      if (ev.kind === "checkpoint") {
+      if (e.kind === "checkpoint") {
         const snap: Checkpoint = {
           id: uid(),
-          label: ev.label,
+          label: e.label,
           ts: Date.now(),
           files: Object.fromEntries(Object.entries(files).map(([k, v]) => [k, { plus: v.plus, minus: v.minus }])),
         };
@@ -732,6 +753,46 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       doneBg(bg, res.ok);
       const line: TermLine = { id: uid(), cmd: c, out: res.out, ok: res.ok, ts: Date.now() };
       mutSession(active.id, (s) => ({ ...s, term: [...s.term, line] }));
+    },
+
+    sendSideChat(text) {
+      const t = text.trim();
+      if (!t) return;
+      const you: SideMsg = { id: uid(), role: "you", text: t, ts: Date.now() };
+      setSt((p) => ({ ...p, sideChat: [...(p.sideChat || []), you].slice(-60) }));
+      const respond = (reply: string) =>
+        setSt((p) => ({ ...p, sideChat: [...(p.sideChat || []), { id: uid(), role: "laro" as const, text: reply, ts: Date.now() }].slice(-60) }));
+      if (st.settings.engine === "ollama") {
+        (async () => {
+          try {
+            let acc = "";
+            for await (const part of ollamaChat(
+              st.settings.ollamaUrl, st.settings.ollamaModel,
+              [{ role: "system", content: "You are Laro's featherweight side-chat. Short, warm, honest answers — two sentences max. You never do heavy work here; big tasks belong in the main window." },
+               { role: "user", content: t }],
+              "lite", false
+            )) if (part.type === "text") acc += part.chunk;
+            respond(acc || sideChatReply(t));
+          } catch { respond(sideChatReply(t)); }
+        })();
+      } else {
+        setTimeout(() => respond(sideChatReply(t)), 600 + Math.random() * 700);
+      }
+    },
+
+    previewPlan() {
+      // Future Simulator: read the pending plan's actual future and show it
+      if (!pending || pending.type !== "plan" || !active) return;
+      const fileEvs = pending.resume.map((t) => t.ev).filter((e): e is Extract<AgentEvent, { kind: "file" }> => e.kind === "file");
+      const files = [...new Set(fileEvs.map((f) => f.path))];
+      const plus = fileEvs.reduce((n, f) => n + f.plus, 0);
+      const minus = fileEvs.reduce((n, f) => n + f.minus, 0);
+      appendEvent(active.id, pending.msgId, {
+        kind: "sim",
+        files, plus, minus,
+        pros: ["Small, reviewable diff — easy to undo via the time machine", "Everything stays inside the scope lock", "Verified by an actual run before handback"],
+        cons: [files.length > 1 ? "Touches more than one file — review both" : "Single-file change — low blast radius", "Estimates come from the plan; reality can drift a little"],
+      });
     },
 
     setDraft(sessionId, draft) {

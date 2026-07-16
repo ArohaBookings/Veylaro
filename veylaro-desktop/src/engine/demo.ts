@@ -231,6 +231,16 @@ const TEMPLATES: Template[] = [
 ];
 
 /** Sub-agent lanes: 2 by default, 3 on 16 GB+ machines ("auto"). */
+/** Side-chat Laro — the featherweight companion (Lite when live). */
+export function sideChatReply(text: string): string {
+  const t = text.toLowerCase();
+  if (/^(hi|hey|hello|yo)\b/.test(t)) return "hey! i'm laro — ask me anything while the main run cooks. i stay featherweight over here so i never slow the real work down.";
+  if (/who are you|what are you/.test(t)) return "i'm laro, veylaro's local brain. this side window runs my lite side so the heavy lifting keeps all the RAM. same personality, smaller footprint.";
+  if (/what can you do|help/.test(t)) return "over here? quick questions, explain code words, plan your next prompt, or just keep you company. the big builds happen in the main window — this lane never blocks them.";
+  if (/\?$/.test(t)) return "good question — my honest take: " + (t.includes("best") ? "keep it simple first, make it work, then make it pretty. that order wins every time." : "break it into the smallest step you can verify, do that, then the next. that's how i'd attack it.");
+  return "noted. want me to turn that into a task for the main window? just paste it there and i'll go full-strength on it.";
+}
+
 export function buildLanes(prompt: string, scope: string, count: number): SubAgentLane[] {
   const lanes: SubAgentLane[] = [
     { name: "Scout", role: "recon", task: `map ${base(scope)} + everything that imports it` },
@@ -384,6 +394,18 @@ export function buildRun(opts: {
   out.push({
     delay: d(4200),
     ev: { kind: "verify", target: base(s), ok: true, detail: "Ran it end-to-end after the change — behavior confirmed, not assumed." },
+  });
+
+  // Weakness Radar — proactive: flags risky spots nearby, offers cleanup
+  out.push({
+    delay: d(700),
+    ev: {
+      kind: "radar",
+      items: [
+        { path: s, issue: "two near-duplicate blocks — one edit will rot the other", sev: "med" },
+        { path: s, issue: "user input reaches the DOM without escaping", sev: "high" },
+      ],
+    },
   });
 
   const r = t.recap(s);

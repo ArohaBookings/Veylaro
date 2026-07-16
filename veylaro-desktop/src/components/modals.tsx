@@ -431,6 +431,19 @@ export function IntelligenceModal({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="mrow">
+        <label>Your personal Laro</label>
+        <div className="update-box">
+          <div className="urow"><span>Base weights</span><b>{liveModel ? liveModel.replace(/:latest$/, "") : "arrives with launch"}</b></div>
+          <div className="urow"><span>Your adapter</span><b>{settings.overnight ? "training nightly ✦" : "not started"}</b></div>
+          <div className="unote">
+            Your adapter is yours alone — it layers on top of the base weights. When we ship a smarter
+            Laro, your adapter re-applies automatically: new brain, same you-shaped instincts. Weights
+            stay closed and on this machine.
+          </div>
+        </div>
+      </div>
+
+      <div className="mrow">
         <label>Updates</label>
         <div className="update-box">
           <div className="urow">
