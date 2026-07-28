@@ -18,19 +18,23 @@ export interface ChatMsg {
   content: string;
 }
 
-/** Per-SKU tuning: Lite trades ceiling for snap; Max gets full depth.
-    When a dedicated veylaro-code-lite model ships, MODEL_PREFERENCE
-    picks it up automatically — until then Lite runs the same weights
-    with a tighter budget so it *feels* featherweight. */
-const SKU_OPTS = {
-  lite: { temperature: 0.3, num_predict: 512, top_p: 0.9, num_ctx: 4096 },
-  max: { temperature: 0.3, num_predict: 1024, top_p: 0.9 },
-} as const;
-const KEEP_ALIVE = "30m";
+/** Per-tier tuning comes from the tier table so there is exactly one
+    source of truth for how each model is driven. Lite trades ceiling for
+    snap; Max gets full depth. */
+import { runtimeFor, TIER_BY_ID } from "./tiers";
+import type { ModelId } from "../types";
 
-/** Preferred shipped model names, best first. */
-const MODEL_PREFERENCE = ["veylaro-code", "veylaro"];
-export const LITE_MODEL_PREFERENCE = ["veylaro-code-lite", "veylaro-lite"];
+function optsFor(sku: ModelId) {
+  const rt = runtimeFor(sku);
+  return { temperature: rt.temperature, num_predict: rt.numPredict, num_ctx: rt.numCtx, top_p: 0.9 };
+}
+
+/** Preferred shipped model names per tier, best first. The tier's own
+    ollamaTag wins; the legacy names keep older installs working. */
+export function modelPreference(sku: ModelId): string[] {
+  return [TIER_BY_ID[sku].ollamaTag, `veylaro-${sku}`, "veylaro-code", "veylaro"];
+}
+const MODEL_PREFERENCE = ["laro-med", "laro-max", "laro-lite", "veylaro-code", "veylaro"];
 
 export async function ollamaAlive(url: string): Promise<boolean> {
   try {
@@ -64,7 +68,7 @@ export async function warmup(url: string, model: string): Promise<void> {
     await fetch(`${url.replace(/\/$/, "")}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt: "", stream: false, keep_alive: KEEP_ALIVE, options: { num_predict: 1 } }),
+      body: JSON.stringify({ model, prompt: "", stream: false, keep_alive: "30m", options: { num_predict: 1 } }),
       signal: AbortSignal.timeout(120000),
     });
   } catch {
@@ -83,7 +87,7 @@ export async function* ollamaChat(
   url: string,
   model: string,
   messages: ChatMsg[],
-  sku: "lite" | "max" = "max",
+  sku: ModelId = "med",
   reasoning = false,
   signal?: AbortSignal
 ): AsyncGenerator<StreamChunk> {
@@ -95,8 +99,8 @@ export async function* ollamaChat(
       messages,
       stream: true,
       think: reasoning,
-      keep_alive: KEEP_ALIVE,
-      options: SKU_OPTS[sku],
+      keep_alive: runtimeFor(sku).keepAlive,
+      options: optsFor(sku),
     }),
     signal,
   });

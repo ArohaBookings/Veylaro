@@ -3,6 +3,7 @@ import { GlowCard, CountUp, Reveal } from "../components/FX";
 import { VeylaroMark } from "../components/Logo";
 import { AdminGate } from "../components/AdminGate";
 import { InterestAdminPanel } from "../components/Interest";
+import { AdminControls, AdminReferrals } from "../components/AdminControls";
 import {
   Users, DownloadIcon, Gauge, Globe, Apple, Windows, Refresh, Shield, Bolt, Eye, TerminalIcon,
 } from "../components/Icons";
@@ -455,7 +456,9 @@ function SupportView() {
 
 /* =================== shell =================== */
 const VIEWS = [
+  { id: "controls", label: "Controls", icon: <Bolt size={16} /> },
   { id: "interest", label: "Register interest", icon: <Globe size={16} /> },
+  { id: "referrals", label: "Referrals", icon: <Users size={16} /> },
   { id: "overview", label: "Overview", icon: <Gauge size={16} /> },
   { id: "users", label: "Users", icon: <Users size={16} /> },
   { id: "downloads", label: "Downloads", icon: <DownloadIcon size={16} /> },
@@ -469,7 +472,7 @@ export function Admin() {
 }
 
 function AdminInner({ userEmail, logout }: { userEmail: string; logout: () => void }) {
-  const [view, setView] = useState<string>("interest");
+  const [view, setView] = useState<string>("controls");
   return (
     <div className="admin-shell">
       <aside className="admin-side">
@@ -510,12 +513,14 @@ function AdminInner({ userEmail, logout }: { userEmail: string; logout: () => vo
             >
               {VIEWS.map((v) => <option key={v.id} value={v.id} style={{ color: "#000" }}>{v.label}</option>)}
             </select>
-            {view !== "interest" && <span className="badge amber" style={{ alignSelf: "center" }}>Sample data — real analytics land with launch</span>}
-            {view === "interest" && <span className="badge green" style={{ alignSelf: "center" }}>● Live — Supabase</span>}
+            {!["interest", "controls", "referrals"].includes(view) && <span className="badge amber" style={{ alignSelf: "center" }}>Sample data — real analytics land with launch</span>}
+            {["interest", "controls", "referrals"].includes(view) && <span className="badge green" style={{ alignSelf: "center" }}>● Live — Supabase</span>}
             <button className="btn ghost sm" style={{ alignSelf: "center" }} onClick={logout}>Sign out</button>
           </div>
         </div>
 
+        {view === "controls" && <AdminControls />}
+        {view === "referrals" && <AdminReferrals />}
         {view === "interest" && <InterestAdminPanel />}
         {view === "overview" && <Overview />}
         {view === "users" && <UsersView />}

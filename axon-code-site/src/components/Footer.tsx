@@ -31,6 +31,7 @@ export function Footer() {
             <h5>Legal</h5>
             <Link className="f-link" to="/privacy">Privacy Policy</Link>
             <Link className="f-link" to="/terms">Terms of Service</Link>
+            <Link className="f-link" to="/licenses">Licences &amp; notices</Link>
             <Link className="f-link" to="/local">Security</Link>
           </div>
           <div>

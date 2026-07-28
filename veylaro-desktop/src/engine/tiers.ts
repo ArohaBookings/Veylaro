@@ -1,36 +1,53 @@
-/* ============================================================
-   Laro capability tiers — the app-side mirror of
-   training/config/laro_system_tiers.json (single source of truth
-   for what "Lite / Plus / Max" means). The WEIGHTS shrink per
-   tier; the SYSTEM scaffolding (grounding, retrieval, design-kit,
-   verified best-of-N) ships on every tier. That is what lets a
-   1.5B Lite build punch far above its parameter count.
-
-   Keep this in sync with the JSON. laro_tier.py validates the
-   canonical file; this file powers the desktop hardware-fit UI.
-   ============================================================ */
 import type { ModelId } from "../types";
 
-export type CapabilityTier = "lite" | "plus" | "max";
+/* ============================================================
+   Laro capability tiers — the single source of truth for what
+   Lite / Med / Max mean, how much machine each needs, and how
+   each is tuned for latency.
+
+   The WEIGHTS change per tier. The SYSTEM scaffolding (grounding,
+   retrieval, design kit, verified best-of-N, the adversarial
+   ratchet) ships on EVERY tier — that is what lets Lite punch
+   far above its parameter count.
+
+   Nothing here loads a model. `ollamaTag` is the name the app
+   asks Ollama for once the weights are installed; until then the
+   app runs the preview engine and every screen still works.
+   ============================================================ */
+
+export type CapabilityTier = ModelId; // "lite" | "med" | "max"
 
 export interface TierSystems {
-  groundingVGL: boolean;      // anti-hallucination verification layer
-  retrievalRAG: boolean;      // ground answers in the user's real code/docs
-  freshnessWeb: boolean;      // live facts -> no knowledge cutoff
-  designSystemKit: boolean;   // guaranteed-good UI scaffold
-  reasoningScaffold: string;  // plan -> solve -> verify depth
-  overdriveSamples: number;   // verified best-of-N test-time-compute budget
-  toolLoop: boolean;
+  groundingGate: boolean; // hard_existence_gate — blocks fabricated APIs
+  retrievalRAG: boolean; // ground answers in the user's real code
+  freshnessWeb: boolean; // live retrieval -> not limited to the weight cutoff
+  designSystemKit: boolean; // guaranteed-good UI scaffold
+  adversarialRatchet: boolean; // damages the app on purpose; tests must catch it
+  reasoningScaffold: string; // plan -> solve -> verify depth
+  overdriveSamples: number; // verified best-of-N budget
   subAgentLanes: number;
 }
 
 export interface TierProfile {
   id: CapabilityTier;
   name: string;
+  tagline: string;
+  /** Absolute floor. Below this we refuse to recommend the tier. */
   minRamGB: number;
+  /** Where it feels genuinely smooth. */
   recommendedRamGB: number;
-  baseParamsB: number;
+  paramsB: number;
+  diskGB: number;
   contextTokens: number;
+  /** Ollama model name once the weights are installed. */
+  ollamaTag: string;
+  /** Runtime tuning — smaller budgets on small machines keep it snappy. */
+  runtime: {
+    numPredict: number;
+    numCtx: number;
+    keepAlive: string;
+    temperature: number;
+  };
   systems: TierSystems;
 }
 
@@ -38,68 +55,110 @@ export const SYSTEM_TIERS: TierProfile[] = [
   {
     id: "lite",
     name: "Laro Lite",
+    tagline: "Runs on almost anything. Still a real engineer.",
     minRamGB: 4,
-    recommendedRamGB: 6,
-    baseParamsB: 1.5,
-    contextTokens: 4096,
+    recommendedRamGB: 8,
+    paramsB: 4,
+    diskGB: 2.6,
+    contextTokens: 16384,
+    ollamaTag: "laro-lite",
+    runtime: { numPredict: 768, numCtx: 8192, keepAlive: "20m", temperature: 0.0 },
     systems: {
-      groundingVGL: true, retrievalRAG: true, freshnessWeb: true,
-      designSystemKit: true, reasoningScaffold: "plan-verify-1pass",
-      overdriveSamples: 2, toolLoop: true, subAgentLanes: 1,
+      groundingGate: true, retrievalRAG: true, freshnessWeb: true,
+      designSystemKit: true, adversarialRatchet: true,
+      reasoningScaffold: "plan → verify (1 pass)", overdriveSamples: 2, subAgentLanes: 1,
     },
   },
   {
-    id: "plus",
-    name: "Laro Plus",
+    id: "med",
+    name: "Laro Med",
+    tagline: "The measured one. Best balance of smart and fast.",
     minRamGB: 8,
-    recommendedRamGB: 10,
-    baseParamsB: 4,
-    contextTokens: 8192,
+    recommendedRamGB: 16,
+    paramsB: 12,
+    diskGB: 7.6,
+    contextTokens: 16384,
+    ollamaTag: "laro-med",
+    runtime: { numPredict: 1536, numCtx: 16384, keepAlive: "30m", temperature: 0.0 },
     systems: {
-      groundingVGL: true, retrievalRAG: true, freshnessWeb: true,
-      designSystemKit: true, reasoningScaffold: "plan-verify-2pass",
-      overdriveSamples: 3, toolLoop: true, subAgentLanes: 2,
+      groundingGate: true, retrievalRAG: true, freshnessWeb: true,
+      designSystemKit: true, adversarialRatchet: true,
+      reasoningScaffold: "plan → verify (2 pass)", overdriveSamples: 3, subAgentLanes: 2,
     },
   },
   {
     id: "max",
     name: "Laro Max",
-    minRamGB: 16,
-    recommendedRamGB: 24,
-    baseParamsB: 4,
-    contextTokens: 16384,
+    tagline: "Everything we know how to give it. For big machines.",
+    minRamGB: 24,
+    recommendedRamGB: 32,
+    paramsB: 24,
+    diskGB: 14,
+    contextTokens: 32768,
+    ollamaTag: "laro-max",
+    runtime: { numPredict: 2048, numCtx: 32768, keepAlive: "30m", temperature: 0.0 },
     systems: {
-      groundingVGL: true, retrievalRAG: true, freshnessWeb: true,
-      designSystemKit: true, reasoningScaffold: "plan-verify-branch",
-      overdriveSamples: 5, toolLoop: true, subAgentLanes: 3,
+      groundingGate: true, retrievalRAG: true, freshnessWeb: true,
+      designSystemKit: true, adversarialRatchet: true,
+      reasoningScaffold: "plan → branch → verify", overdriveSamples: 5, subAgentLanes: 3,
     },
   },
 ];
 
-/** Highest capability tier this machine's RAM supports. */
+export const TIER_BY_ID: Record<CapabilityTier, TierProfile> = Object.fromEntries(
+  SYSTEM_TIERS.map((t) => [t.id, t])
+) as Record<CapabilityTier, TierProfile>;
+
+/** Highest tier this machine can actually run well. */
 export function capabilityTier(ramGB: number): TierProfile {
   const eligible = SYSTEM_TIERS.filter((t) => ramGB >= t.minRamGB);
-  if (eligible.length) return eligible.reduce((a, b) => (b.minRamGB > a.minRamGB ? b : a));
-  return SYSTEM_TIERS[0];
+  return eligible.length ? eligible[eligible.length - 1] : SYSTEM_TIERS[0];
 }
 
-/** Number of parallel sub-agent lanes the hardware can drive. */
+/** Which tier to recommend. Conservative: we'd rather feel instant than clever. */
+export function recommendModel(ramGB: number): CapabilityTier {
+  if (ramGB >= 24) return "max";
+  if (ramGB >= 12) return "med";
+  return "lite";
+}
+
+/** Parallel sub-agent lanes the hardware can drive. */
 export function subAgentLanes(ramGB: number): number {
   return capabilityTier(ramGB).systems.subAgentLanes;
 }
 
-/** Which purchasable SKU (Lite 1.5B vs Max 4B) to recommend for this machine. */
-export function recommendModel(ramGB: number): ModelId {
-  return ramGB < 8 ? "lite" : "max";
+export type FitStatus = "great" | "ok" | "tight" | "insufficient";
+
+export interface FitResult {
+  status: FitStatus;
+  note: string;
 }
 
-export type FitStatus = "great" | "ok" | "insufficient";
+export function recommendedName(ramGB: number): string {
+  return TIER_BY_ID[recommendModel(ramGB)].name;
+}
 
-/** Fit a chosen SKU against the machine. Max needs 16 GB; Lite runs on 4. */
-export function fitCheck(model: ModelId, ramGB: number): { status: FitStatus; note: string } {
-  const floor = model === "max" ? 16 : 4;
-  const rec = model === "max" ? 16 : 6;
-  if (ramGB >= rec) return { status: "great", note: `${ramGB} GB comfortably runs ${model === "max" ? "Laro Max" : "Laro Lite"}.` };
-  if (ramGB >= floor) return { status: "ok", note: `${ramGB} GB meets the floor; close other apps for headroom.` };
-  return { status: "insufficient", note: `${ramGB} GB is below the ${floor} GB floor — Laro Lite is the better fit here.` };
+/** Honest fit check — tells the truth about what this machine will feel like. */
+export function fitCheck(model: CapabilityTier, ramGB: number): FitResult {
+  const t = TIER_BY_ID[model];
+  if (ramGB >= t.recommendedRamGB)
+    return { status: "great", note: `${ramGB} GB runs ${t.name} comfortably — expect it to feel instant.` };
+  if (ramGB >= t.minRamGB + 2)
+    return { status: "ok", note: `${ramGB} GB runs ${t.name} well. Close a couple of browser tabs on big jobs.` };
+  if (ramGB >= t.minRamGB)
+    return {
+      status: "tight",
+      note: `${ramGB} GB meets ${t.name}'s floor but it will feel tight. ${
+        t.id === "max" ? "Laro Med" : "Laro Lite"
+      } will feel faster on this machine.`,
+    };
+  return {
+    status: "insufficient",
+    note: `${ramGB} GB is below ${t.name}'s ${t.minRamGB} GB floor — it would swap and crawl. Use ${recommendedName(ramGB)} instead.`,
+  };
+}
+
+/** Runtime options for the live adapter, tuned per tier. */
+export function runtimeFor(model: CapabilityTier) {
+  return TIER_BY_ID[model].runtime;
 }

@@ -2,14 +2,14 @@ import { Reveal, GlowCard } from "../components/FX";
 import { VeylaroMark } from "../components/Logo";
 import { Apple, Windows, Linux, Android, DownloadIcon, Check, Shield, Cpu, Bolt, Sparkle, Gauge } from "../components/Icons";
 import { Link } from "react-router-dom";
-import { DOWNLOADS_ENABLED, MAC_BUILD } from "../config";
+import { BUILDS, DOWNLOADS_ENABLED } from "../config";
+import { useAppConfig } from "../lib/appConfig";
 import { RegisterInterest } from "../components/Interest";
 
 export function Download() {
-  const soon = (e: React.MouseEvent) => {
-    e.preventDefault();
-    alert("The Windows build of Veylaro Code is coming right behind the Mac build.");
-  };
+  // the live switch wins; the compile-time flag is the offline fallback
+  const cfg = useAppConfig();
+  const open = cfg.downloads_enabled || DOWNLOADS_ENABLED;
 
   return (
     <main>
@@ -27,7 +27,7 @@ export function Download() {
               The installer ships with the full Laro model inside. One free account, no API keys,
               no setup wizard from hell. Install, sign in, open a project, start building.
             </p>
-            {!DOWNLOADS_ENABLED && (
+            {!open && (
               <div className="interest-band">
                 <div className="ib-title">✦ Downloads open very soon.</div>
                 <p>Leave your email and you're first in line the moment Veylaro Code goes live.</p>
@@ -46,10 +46,13 @@ export function Download() {
                 <div className="os-icon"><Apple size={34} /></div>
                 <h3>macOS</h3>
                 <div className="os-meta">Apple Silicon (M1–M4) · macOS 13+ · Universal</div>
-                {DOWNLOADS_ENABLED ? (
-                  <a href={MAC_BUILD} download className="btn primary lg" style={{ width: "100%" }}>
-                    <DownloadIcon size={18} /> Download for Mac
-                  </a>
+                {open ? (
+                  <>
+                    <a href={BUILDS.macArm} download className="btn primary lg" style={{ width: "100%" }}>
+                      <DownloadIcon size={18} /> Download for Mac
+                    </a>
+                    <a href={BUILDS.macIntel} download className="dl-alt">Intel Mac build</a>
+                  </>
                 ) : (
                   <span className="btn primary lg ghosted" aria-disabled="true" style={{ width: "100%" }}>
                     <DownloadIcon size={18} /> Download for Mac
@@ -66,10 +69,13 @@ export function Download() {
                 <div className="os-icon"><Windows size={30} /></div>
                 <h3>Windows</h3>
                 <div className="os-meta">Windows 11 / 10 (64-bit) · NVIDIA, AMD or CPU · .exe</div>
-                {DOWNLOADS_ENABLED ? (
-                  <a href="#" onClick={soon} className="btn primary lg" style={{ width: "100%" }}>
-                    <DownloadIcon size={18} /> Download for Windows
-                  </a>
+                {open ? (
+                  <>
+                    <a href={BUILDS.win} download className="btn primary lg" style={{ width: "100%" }}>
+                      <DownloadIcon size={18} /> Download for Windows
+                    </a>
+                    <a href={BUILDS.winPortable} download className="dl-alt">Portable .exe (no install)</a>
+                  </>
                 ) : (
                   <span className="btn primary lg ghosted" aria-disabled="true" style={{ width: "100%" }}>
                     <DownloadIcon size={18} /> Download for Windows
@@ -77,7 +83,7 @@ export function Download() {
                   </span>
                 )}
                 <div className="dl-req">
-                  <span>Coming right behind Mac</span><span>8 GB VRAM or 16 GB RAM</span><span>Signed installer</span>
+                  <span>Windows 10 &amp; 11 · x64</span><span>8 GB RAM minimum</span><span>SHA-256 published</span>
                 </div>
               </GlowCard>
             </Reveal>
@@ -92,44 +98,37 @@ export function Download() {
         </div>
       </section>
 
-      {/* two models */}
+      {/* three models */}
       <section className="section tight">
         <div className="container">
           <Reveal className="center" style={{ marginBottom: 46 }}>
-            <span className="eyebrow"><span className="dot" />Two models, one intelligence</span>
+            <span className="eyebrow"><span className="dot" />Three sizes, one intelligence</span>
             <h2 className="h-xl">Pick your Laro.<br /><span className="grad-text">Or let Veylaro pick for you.</span></h2>
             <p className="lede" style={{ marginTop: 16 }}>
-              Both ship in the same download. A slider inside the app switches between them —
-              Veylaro reads your hardware on first launch and recommends the right one.
+              All three ship in the same download. Veylaro reads your machine on first launch and puts you
+              on the right one — you can change it any time from the bar at the bottom of the app.
             </p>
           </Reveal>
-          <div className="dl-cards" style={{ maxWidth: 940 }}>
-            <Reveal delay={0}>
-              <GlowCard style={{ padding: 34 }}>
-                <div className="icon-tile"><Gauge size={22} /></div>
-                <h3 style={{ fontSize: 22 }}>Laro Lite</h3>
-                <p style={{ marginTop: 8 }}>
-                  The featherweight. Tuned for everyday laptops — down to 4 GB of RAM —
-                  and smaller projects. Same agentic brain, smaller footprint, instant startup.
-                </p>
-                <div className="dl-req" style={{ justifyContent: "flex-start", marginTop: 20 }}>
-                  <span>≈ 1.9 GB on disk</span><span>4 GB RAM or less</span><span>Great for single-repo work</span>
-                </div>
-              </GlowCard>
-            </Reveal>
-            <Reveal delay={120}>
-              <GlowCard style={{ padding: 34, borderColor: "rgba(216,154,102,0.45)" }}>
-                <div className="icon-tile"><Sparkle size={22} /></div>
-                <h3 style={{ fontSize: 22 }}>Laro Max</h3>
-                <p style={{ marginTop: 8 }}>
-                  The full weights. The most powerful local coding model we know how to build —
-                  deep multi-file reasoning, long sessions, heavy refactors. This is the flagship.
-                </p>
-                <div className="dl-req" style={{ justifyContent: "flex-start", marginTop: 20 }}>
-                  <span>≈ 9.4 GB on disk</span><span>16 GB RAM recommended</span><span>Built for real engineering</span>
-                </div>
-              </GlowCard>
-            </Reveal>
+          <div className="tier-cards">
+            {[
+              { n: "Laro Lite", p: "4B", d: "2.6 GB", r: "4 GB RAM and up", i: <Gauge size={22} />,
+                b: "Runs on almost anything — old laptops, cheap Windows machines, a Pi with patience. Same agent, feather footprint, near-instant replies." },
+              { n: "Laro Med", p: "12B", d: "7.6 GB", r: "8 GB RAM and up", i: <Sparkle size={22} />, feat: true,
+                b: "The one we measured hardest and the one most people should run. Best balance of smart and fast on an ordinary laptop." },
+              { n: "Laro Max", p: "24B", d: "14 GB", r: "24 GB RAM and up", i: <Bolt size={22} />,
+                b: "Everything we know how to give it — the deepest reasoning, the longest context. For workstations that can feed it." },
+            ].map((m, i) => (
+              <Reveal key={m.n} delay={i * 110}>
+                <GlowCard style={{ padding: 30, height: "100%", ...(m.feat ? { borderColor: "rgba(216,154,102,0.45)" } : {}) }}>
+                  <div className="icon-tile">{m.i}</div>
+                  <h3 style={{ fontSize: 21 }}>{m.n} {m.feat && <span className="tier-pill">most popular</span>}</h3>
+                  <p style={{ marginTop: 8 }}>{m.b}</p>
+                  <div className="dl-req" style={{ justifyContent: "flex-start", marginTop: 18 }}>
+                    <span>{m.p} parameters</span><span>≈ {m.d} on disk</span><span>{m.r}</span>
+                  </div>
+                </GlowCard>
+              </Reveal>
+            ))}
           </div>
         </div>
       </section>

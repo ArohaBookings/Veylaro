@@ -756,3 +756,36 @@ code.inline { font-family: var(--font-mono); font-size: 0.9em; background: rgba(
 .am-diff .d { background: rgba(248,113,113,0.09); color: #fda4af; padding: 3px 10px; }
 .am-diff .a { background: rgba(52,211,153,0.08); color: #86efbc; padding: 3px 10px; }
 .am-verify { color: var(--green); font-size: 12px; border: 1px solid rgba(52,211,153,0.3); background: rgba(52,211,153,0.06); border-radius: 10px; padding: 7px 11px; }
+
+/* ============ admin controls ============ */
+.ctl-row { display: flex; align-items: center; gap: 18px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.ctl-row:last-child { border-bottom: none; }
+.ctl-txt { flex: 1; min-width: 0; }
+.ctl-t { font-size: 14.5px; font-weight: 600; }
+.ctl-s { font-size: 13px; color: var(--dim); margin-top: 3px; line-height: 1.5; }
+.ctl-act { flex-shrink: 0; }
+.ctl-note {
+  border: 1px solid rgba(52,211,153,0.4); background: rgba(52,211,153,0.08); color: var(--green);
+  border-radius: 12px; padding: 11px 16px; font-size: 13.5px; margin-bottom: 16px;
+  animation: menu-down 0.3s var(--ease-out);
+}
+.ctl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+@media (max-width: 700px) { .ctl-grid { grid-template-columns: 1fr; } }
+.ctl-grid label, .ctl-full { display: block; font-size: 11.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--dim); margin-bottom: 12px; }
+.ctl-grid input, .ctl-full input, .ctl-full textarea {
+  display: block; width: 100%; margin-top: 7px; background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border); border-radius: 11px; color: var(--text);
+  font-size: 14px; padding: 10px 13px; outline: none; font-family: var(--font-body);
+  text-transform: none; letter-spacing: normal; font-weight: 400; resize: vertical;
+}
+.ctl-grid input:focus, .ctl-full input:focus, .ctl-full textarea:focus { border-color: rgba(216,154,102,0.55); }
+.ctl-cur { font-size: 12px; color: var(--dim); font-family: var(--font-mono); margin-top: 12px; }
+
+/* alt download link under the main button */
+.dl-alt { display: inline-block; margin-top: 10px; font-size: 12.5px; color: var(--dim); border-bottom: 1px dotted var(--border-strong); }
+.dl-alt:hover { color: var(--violet); }
+
+/* three-tier cards */
+.tier-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+@media (max-width: 900px) { .tier-cards { grid-template-columns: 1fr; } }
+.tier-pill { font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--violet); border: 1px solid rgba(216,154,102,0.4); border-radius: 100px; padding: 3px 9px; margin-left: 8px; vertical-align: middle; }

@@ -176,7 +176,7 @@ export function Home() {
               <div className="hero-sub">
                 <span><Apple size={14} /> macOS</span>
                 <span><Windows size={13} /> Windows</span>
-                <span>Free tier · 2-minute account · No credit card</span>
+                <span>First month unlimited · No credit card · 2-minute account</span>
               </div>
             </Reveal>
             <Reveal delay={550}>

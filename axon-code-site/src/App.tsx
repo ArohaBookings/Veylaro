@@ -9,6 +9,7 @@ import { Benchmarks } from "./pages/Benchmarks";
 import { Pricing } from "./pages/Pricing";
 import { Download } from "./pages/Download";
 import { Code } from "./pages/Code";
+import { Licenses } from "./pages/Licenses";
 import { Local } from "./pages/Local";
 import { PrivacyPolicy } from "./pages/PrivacyPolicy";
 import { Terms } from "./pages/Terms";
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/download" element={<Download />} />
         <Route path="/code" element={<Code />} />
+        <Route path="/licenses" element={<Licenses />} />
         <Route path="/local" element={<Local />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<Terms />} />

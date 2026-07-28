@@ -1,6 +1,6 @@
 /* ============ Veylaro core types ============ */
 
-export type ModelId = "lite" | "max";
+export type ModelId = "lite" | "med" | "max";
 export type PermMode = "ask" | "edits" | "bypass";
 export type Plan = "free" | "pro" | "team";
 export type LangPref = "both" | "plain" | "dev";
@@ -22,6 +22,11 @@ export interface Account {
   lastVerified?: number;
   /** epoch ms — when a past_due grace window ends (access drops to Free after). */
   graceUntil?: number;
+  /** epoch ms — end of the launch "first month unlimited" gift. */
+  launchTrialUntil?: number;
+  /** this user's own referral code, and how many have converted. */
+  referralCode?: string;
+  referralsUsed?: number;
 }
 
 /** Paid access survives this long fully offline before asking to re-verify —
@@ -50,6 +55,23 @@ export interface Settings {
   deckOpen: boolean; // right-side Viewport/Tasks deck
   deckWidth: number; // px
   viewportUrl: string; // what the Viewport panel points at
+
+  /* ---- safety & access ---- */
+  fullDiskAccess: boolean; // DANGEROUS: let Laro read/write outside the session scope
+  fullDiskAckAt?: number; // when the user accepted the risk (audit trail)
+  confirmDestructive: boolean; // always confirm deletes / rm / force-push
+  autoPickModel: boolean; // let Veylaro choose the tier from your hardware
+
+  /* ---- privacy ---- */
+  shareImprovementData: boolean; // OFF by default — anonymous counters only
+  crashReports: boolean; // OFF by default
+
+  /* ---- learning ---- */
+  overnightOnlyWhenPlugged: boolean; // trains only on power + idle
+  overnightIntensity: "gentle" | "normal"; // gentle = tiny nightly nudges
+
+  /* ---- terminal ---- */
+  terminalShell: string; // which shell the CLI + terminal mode use
 }
 
 export const APP_VERSION = "1.0.0";
@@ -202,20 +224,33 @@ export const MODELS: Record<
   lite: {
     name: "Laro Lite",
     tag: "Featherweight",
-    disk: "1.9 GB",
-    ram: "runs on 4 GB RAM and below",
-    tps: [58, 84],
-    blurb: "Half the footprint, all the agent. Runs on as little as 4 GB RAM — old laptops welcome.",
+    disk: "2.6 GB",
+    ram: "4 GB RAM and up",
+    tps: [58, 90],
+    blurb: "Runs on almost anything — old laptops welcome. Same agent brain, feather footprint.",
+  },
+  med: {
+    name: "Laro Med",
+    tag: "The sweet spot",
+    disk: "7.6 GB",
+    ram: "8 GB RAM and up",
+    tps: [30, 48],
+    blurb: "The measured one. Best balance of smart and fast — our default recommendation.",
   },
   max: {
     name: "Laro Max",
     tag: "Flagship",
-    disk: "9.4 GB",
-    ram: "16 GB+ RAM",
-    tps: [34, 52],
-    blurb: "The full weights. The most powerful local coding model in the world.",
+    disk: "14 GB",
+    ram: "24 GB+ RAM",
+    tps: [18, 30],
+    blurb: "Everything we know how to give it. For big machines that want the deepest reasoning.",
   },
 };
+
+/** Every new install gets a full month of unlimited, no card. */
+export const LAUNCH_FREE_MONTH_MS = 30 * 24 * 3600 * 1000;
+/** How many people one user can refer for a free month each. */
+export const REFERRAL_MAX = 5;
 
 /** Electron bridge (present only in the desktop build). */
 export interface VeylaroBridge {

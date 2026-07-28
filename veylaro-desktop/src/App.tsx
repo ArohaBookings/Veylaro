@@ -6,7 +6,8 @@ import { Sidebar } from "./components/Sidebar";
 import { Chat } from "./components/Chat";
 import { Composer } from "./components/Composer";
 import { Timeline } from "./components/widgets";
-import { IntelligenceModal, NewSessionModal, Onboarding, SettingsModal, SignInModal, UpgradeModal } from "./components/modals";
+import { IntelligenceModal, NewSessionModal, Onboarding, SignInModal, UpgradeModal } from "./components/modals";
+import { SettingsModal } from "./components/Settings";
 import { TerminalView } from "./components/Terminal";
 import { Deck } from "./components/Deck";
 import { Palette } from "./components/Palette";
@@ -179,7 +180,7 @@ function Shell() {
 
       {modal === "signin" && <SignInModal onClose={() => setModal(null)} />}
       {modal === "new" && <NewSessionModal onClose={() => setModal(null)} />}
-      {modal === "settings" && <SettingsModal onClose={() => setModal(null)} />}
+      {modal === "settings" && <SettingsModal onClose={() => setModal(null)} onSignIn={() => setModal("signin")} onUpgrade={() => setModal("upgrade")} />}
       {modal === "upgrade" && <UpgradeModal onClose={() => setModal(null)} />}
       {modal === "intel" && <IntelligenceModal onClose={() => setModal(null)} />}
       {palette && <Palette onClose={() => setPalette(false)} openModal={(m) => setModal(m)} setView={setView} />}

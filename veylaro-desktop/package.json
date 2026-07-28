@@ -3,7 +3,7 @@
   "productName": "Veylaro Code",
   "private": true,
   "version": "1.0.0",
-  "description": "Veylaro Code — the most powerful local AI coding agent. Laro Lite & Laro Max, running entirely on your machine.",
+  "description": "Veylaro Code \u2014 the most powerful local AI coding agent. Laro Lite & Laro Max, running entirely on your machine.",
   "author": "Veylaro Labs",
   "type": "module",
   "main": "electron/main.cjs",
@@ -12,7 +12,11 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "app": "electron .",
-    "dist": "vite build && electron-builder --mac zip --publish never"
+    "dist": "vite build && electron-builder --mac --publish never",
+    "dist:mac": "vite build && electron-builder --mac zip --publish never",
+    "dist:win": "vite build && electron-builder --win --publish never",
+    "dist:all": "vite build && electron-builder --mac zip --win --publish never",
+    "cli": "node cli/veylaro.cjs"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -30,13 +34,69 @@
   "build": {
     "appId": "ai.veylaro.code",
     "productName": "Veylaro Code",
-    "artifactName": "VeylaroCode-${version}-${arch}-mac.${ext}",
-    "files": ["dist/**", "electron/**", "package.json"],
-    "directories": { "output": "release" },
+    "artifactName": "VeylaroCode-${version}-${arch}-${os}.${ext}",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "cli",
+        "to": "cli"
+      }
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
     "mac": {
       "category": "public.app-category.developer-tools",
       "identity": null,
-      "target": [{ "target": "zip", "arch": ["arm64"] }]
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "VeylaroCode-Setup-${version}.${ext}",
+      "shortcutName": "Veylaro Code"
+    },
+    "portable": {
+      "artifactName": "VeylaroCode-${version}-win-portable.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
     }
+  },
+  "bin": {
+    "veylaro": "cli/veylaro.cjs"
   }
 }

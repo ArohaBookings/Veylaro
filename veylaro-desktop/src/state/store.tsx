@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import {
   Account, AgentEvent, Attachment, BgTask, BrowseStep, Checkpoint, FileStat, FREE_WEEKLY_LIMIT, Msg,
-  OFFLINE_GRACE_MS, PAST_DUE_GRACE_MS, PermMode, Plan, Question, Session, Settings, SideMsg, TermLine, Usage, VaultItem,
+  LAUNCH_FREE_MONTH_MS, OFFLINE_GRACE_MS, PAST_DUE_GRACE_MS, PermMode, Plan, Question, REFERRAL_MAX,
+  Session, Settings, SideMsg, TermLine, Usage, VaultItem,
 } from "../types";
 
 /* ============ billing state machine ============ */
@@ -24,6 +25,18 @@ const DAY = 86400000;
 /** The single source of truth for "what can this account do right now".
     Pure + deterministic so it's trivially testable. */
 export function deriveBilling(account: Account | null, now: number, online: boolean): BillingInfo {
+  // Launch gift: every new account gets a full month of unlimited, no card.
+  if (account?.launchTrialUntil && now < account.launchTrialUntil && account.plan === "free") {
+    const daysLeft = Math.max(1, Math.ceil((account.launchTrialUntil - now) / DAY));
+    return {
+      plan: "pro",
+      label: "Launch month",
+      daysLeft,
+      banner: daysLeft <= 7
+        ? { tone: "info", title: `Your free launch month ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`, body: "After that you drop to the free tier — 200 messages a week, still unlimited privacy. Go Pro any time to keep it uncapped.", cta: "resubscribe" }
+        : null,
+    };
+  }
   if (!account || account.plan === "free") return { plan: "free", label: "Free", banner: null };
   const paid = account.plan;
   const b = account.billing ?? "active";
@@ -67,7 +80,8 @@ export function deriveBilling(account: Account | null, now: number, online: bool
   return { plan: "free", label: "Checkout incomplete", banner: { tone: "amber", title: "Finish checkout to activate", body: "Your subscription hasn't completed. Finish payment to switch on unlimited.", cta: "finish" } };
 }
 import { buildQuestions, buildRun, needsClarification, sideChatReply, simulateTerminal, TimedEvent } from "../engine/demo";
-import { detectLiveModel, LARO_SYSTEM_PROMPT, ollamaChat, warmup } from "../engine/ollama";
+import { detectLiveModel, ollamaChat, warmup } from "../engine/ollama";
+import { GROUNDING_NOTE, LARO_CHARTER, LARO_DEV_CHARTER, LARO_SIDE_CHARTER } from "../engine/charter";
 import { resultsToContext, webSearch } from "../engine/search";
 import { subAgentLanes } from "../engine/tiers";
 
@@ -119,6 +133,14 @@ const DEFAULT_SETTINGS: Settings = {
   deckOpen: true,
   deckWidth: 380,
   viewportUrl: "http://localhost:3000",
+  fullDiskAccess: false,
+  confirmDestructive: true,
+  autoPickModel: true,
+  shareImprovementData: false,
+  crashReports: false,
+  overnightOnlyWhenPlugged: true,
+  overnightIntensity: "gentle",
+  terminalShell: "",
 };
 
 function readUsageMirror(): Usage | null {
@@ -211,6 +233,8 @@ interface Store extends Persisted {
   removeVaultItem(id: string): void;
   setDraft(sessionId: string, draft: string): void;
   sendSideChat(text: string): void;
+  setFullDiskAccess(on: boolean): void;
+  redeemReferral(code: string): { ok: boolean; msg: string };
   previewPlan(): void; // Future Simulator: predicted outcome of the pending plan
   setOnboarded(): void;
   lastSaved: number; // autosave heartbeat for the titlebar chip
@@ -496,9 +520,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (/^VEY-TRIAL-/i.test(lic)) { billing = "trialing"; periodEnd = now + 14 * DAY; }
       else if (/^VEY-PASTDUE-/i.test(lic)) { billing = "past_due"; graceUntil = now + PAST_DUE_GRACE_MS; }
       else if (/^VEY-CANCEL-/i.test(lic)) { billing = "canceled"; periodEnd = now + 5 * DAY; }
+      const seed = (email.trim().toLowerCase() + "veylaro").split("").reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
       const account: Account = {
         name: name.trim() || email.split("@")[0], email: email.trim(),
         plan, billing, periodEnd, graceUntil, lastVerified: now,
+        // every new account starts with the launch month of unlimited
+        launchTrialUntil: st.account?.launchTrialUntil ?? now + LAUNCH_FREE_MONTH_MS,
+        referralCode: st.account?.referralCode ?? `LARO-${seed.toString(36).toUpperCase().slice(0, 6)}`,
+        referralsUsed: st.account?.referralsUsed ?? 0,
       };
       setSt((p) => ({ ...p, account }));
       return account;
@@ -600,8 +629,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 searchCtx = resultsToContext(q, results);
               }
             }
-            const sys: { role: "system"; content: string }[] = [{ role: "system", content: LARO_SYSTEM_PROMPT }];
-            if (searchCtx) sys.push({ role: "system", content: searchCtx });
+            const isOwner = (st.account?.email || "").toLowerCase() === "leoanthonybons@gmail.com";
+            const sys: { role: "system"; content: string }[] = [
+              { role: "system", content: isOwner ? LARO_DEV_CHARTER : LARO_CHARTER },
+            ];
+            if (searchCtx) sys.push({ role: "system", content: `${GROUNDING_NOTE}\n\n${searchCtx}` });
             setStreamText("");
             let think = "";
             for await (const part of ollamaChat(
@@ -755,6 +787,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       mutSession(active.id, (s) => ({ ...s, term: [...s.term, line] }));
     },
 
+    setFullDiskAccess(on) {
+      // Recorded with a timestamp so there's an audit trail of the moment
+      // a human — not the model — opened the whole disk.
+      setSt((p) => ({
+        ...p,
+        settings: { ...p.settings, fullDiskAccess: on, fullDiskAckAt: on ? Date.now() : undefined },
+      }));
+      pushBg(on ? "Full-disk access ON — you accepted the risk" : "Full-disk access off — back to scope only");
+    },
+
+    redeemReferral(code) {
+      const c = code.trim().toUpperCase();
+      if (!c) return { ok: false, msg: "Enter a code first." };
+      if (!st.account) return { ok: false, msg: "Sign in before redeeming a code." };
+      if (c === (st.account.referralCode || "").toUpperCase())
+        return { ok: false, msg: "That's your own code — nice try." };
+      if (st.account.launchTrialUntil && Date.now() < st.account.launchTrialUntil)
+        return { ok: false, msg: "You're already on free unlimited — save the code for later." };
+      setSt((p) => ({
+        ...p,
+        account: p.account ? { ...p.account, launchTrialUntil: Date.now() + LAUNCH_FREE_MONTH_MS } : p.account,
+      }));
+      return { ok: true, msg: "Applied — a free month is on your account, and 10% off your first paid month." };
+    },
+
     sendSideChat(text) {
       const t = text.trim();
       if (!t) return;
@@ -768,7 +825,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             let acc = "";
             for await (const part of ollamaChat(
               st.settings.ollamaUrl, st.settings.ollamaModel,
-              [{ role: "system", content: "You are Laro's featherweight side-chat. Short, warm, honest answers — two sentences max. You never do heavy work here; big tasks belong in the main window." },
+              [{ role: "system", content: LARO_SIDE_CHARTER },
                { role: "user", content: t }],
               "lite", false
             )) if (part.type === "text") acc += part.chunk;

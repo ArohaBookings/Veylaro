@@ -7,8 +7,17 @@
  *  Flip to true to arm the real downloads. */
 export const DOWNLOADS_ENABLED = false;
 
-/** The packaged desktop app artifact (served from /public/downloads). */
-export const MAC_BUILD = "/downloads/VeylaroCode-1.0.0-arm64-mac.zip";
+/** Packaged desktop artifacts (served from /public/downloads).
+    Apple Silicon and Intel Macs, plus Windows x64. */
+export const BUILDS = {
+  macArm: "/downloads/VeylaroCode-1.0.0-arm64-mac.zip",
+  macIntel: "/downloads/VeylaroCode-1.0.0-x64-mac.zip",
+  win: "/downloads/VeylaroCode-Setup-1.0.0.exe",
+  winPortable: "/downloads/VeylaroCode-1.0.0-win-portable.exe",
+} as const;
+
+/** Back-compat alias. */
+export const MAC_BUILD = BUILDS.macArm;
 
 /** Where the GitHub release will live once Leo sets it up. */
 export const GITHUB_REPO = "https://github.com/ArohaBookings/Veylaro";

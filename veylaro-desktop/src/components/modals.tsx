@@ -201,108 +201,6 @@ function Toggle({ on, onChange, title, sub }: { on: boolean; onChange: (v: boole
   );
 }
 
-export function SettingsModal({ onClose }: { onClose: () => void }) {
-  const { settings, setSettings, ramGB } = useStore();
-  return (
-    <Veil onClose={onClose}>
-      <h2>Settings</h2>
-      <p className="sub">Everything here is stored locally — like everything else.</p>
-      <div className="mrow">
-        <Toggle
-          on={settings.personality}
-          onChange={(v) => setSettings({ personality: v })}
-          title="Personality while working"
-          sub="Laro thinks out loud — “silly me, wrong import path…”"
-        />
-        <Toggle
-          on={settings.planMode}
-          onChange={(v) => setSettings({ planMode: v })}
-          title="Plan mode"
-          sub="Laro presents the plan and waits for your approval before touching anything."
-        />
-        <Toggle
-          on={settings.internet}
-          onChange={(v) => setSettings({ internet: v })}
-          title="Internet access"
-          sub="Search and read the live web when online. Your code never leaves the machine."
-        />
-        <Toggle
-          on={settings.permMode === "bypass"}
-          onChange={(v) => setSettings({ permMode: v ? "bypass" : "edits" })}
-          title="Bypass permissions (full auto)"
-          sub="Never stops to ask — plans, edits and commands run straight through."
-        />
-        <Toggle
-          on={settings.reasoning}
-          onChange={(v) => setSettings({ reasoning: v })}
-          title="Visible reasoning"
-          sub="Watch Laro think before it answers — frontier-style, fully local."
-        />
-        <Toggle
-          on={settings.voice}
-          onChange={(v) => setSettings({ voice: v })}
-          title="Voice replies"
-          sub="Laro reads each recap aloud when a run finishes."
-        />
-        <Toggle
-          on={settings.sounds}
-          onChange={(v) => setSettings({ sounds: v })}
-          title="Completion sounds"
-          sub="A soft chime when a run finishes."
-        />
-      </div>
-      <div className="mrow">
-        <label>Sub-agents</label>
-        <div className="seg" style={{ width: "fit-content" }}>
-          {(["off", "duo", "auto"] as SubAgentPref[]).map((s) => (
-            <button key={s} className={settings.subAgents === s ? "on" : ""} onClick={() => setSettings({ subAgents: s })}>
-              {s === "off" ? "Solo" : s === "duo" ? "2 agents" : `Auto (${ramGB >= 16 ? 3 : 2} on this Mac)`}
-            </button>
-          ))}
-        </div>
-        <div className="hintline">Auto scales with your hardware — {ramGB} GB RAM detected → {ramGB >= 16 ? "3 lanes" : "2 lanes"}.</div>
-      </div>
-      <div className="mrow">
-        <label>Explanation style</label>
-        <div className="seg" style={{ width: "fit-content" }}>
-          {(["both", "plain", "dev"] as LangPref[]).map((l) => (
-            <button key={l} className={settings.lang === l ? "on" : ""} onClick={() => setSettings({ lang: l })}>
-              {l === "both" ? "Plain + Dev" : l === "plain" ? "Plain English" : "Dev only"}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="mrow">
-        <label>Engine</label>
-        <div className="seg" style={{ width: "fit-content" }}>
-          <button className={settings.engine === "demo" ? "on" : ""} onClick={() => setSettings({ engine: "demo" })}>
-            Preview brain
-          </button>
-          <button className={settings.engine === "ollama" ? "on" : ""} onClick={() => setSettings({ engine: "ollama" })}>
-            Live Laro weights
-          </button>
-        </div>
-        {settings.engine === "ollama" && (
-          <>
-            <div className="mrow">
-              <label>Local endpoint</label>
-              <input type="text" value={settings.ollamaUrl} onChange={(e) => setSettings({ ollamaUrl: e.target.value })} />
-            </div>
-            <div className="mrow">
-              <label>Model name</label>
-              <input type="text" value={settings.ollamaModel} onChange={(e) => setSettings({ ollamaModel: e.target.value })} />
-              <div className="hintline">Point this at the served Laro weights (Ollama / OpenAI-compatible).</div>
-            </div>
-          </>
-        )}
-      </div>
-      <div className="mfoot">
-        <button className="btn primary" onClick={onClose}>Done</button>
-      </div>
-    </Veil>
-  );
-}
-
 /* ============ Upgrade ============ */
 
 export function UpgradeModal({ onClose }: { onClose: () => void }) {
@@ -483,23 +381,55 @@ export function IntelligenceModal({ onClose }: { onClose: () => void }) {
 /* ============ First-run onboarding ============ */
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
+  const [step, setStep] = useState(0);
+  const ram = typeof navigator !== "undefined" && (navigator as any).deviceMemory ? (navigator as any).deviceMemory : null;
   return (
     <div className="onboard">
       <div className="inner">
-        <VeylaroMark size={120} animated />
-        <h1>
-          Meet <span className="g">Laro</span>.
-        </h1>
-        <p>
-          The most powerful local AI coding agent in the world — living on this machine, not in a
-          data center. Private by physics. No usage meters running in the background. Works on a
-          plane, in a bunker, on your terms.
-        </p>
-        <div className="ob-ctas">
-          <button className="btn primary" onClick={onDone}>
-            Start building →
-          </button>
-        </div>
+        {step === 0 && (
+          <>
+            <VeylaroMark size={110} animated />
+            <h1>Meet <span className="g">Laro</span>.</h1>
+            <p>
+              An AI engineer that lives on this machine. Not in a data centre, not behind an API key —
+              here, on your disk, answering only to you. Unplug the internet and it keeps working.
+            </p>
+            <div className="ob-ctas">
+              <button className="btn primary" onClick={() => setStep(1)}>Show me →</button>
+            </div>
+          </>
+        )}
+        {step === 1 && (
+          <>
+            <div className="launch-card" style={{ maxWidth: 480, margin: "0 auto" }}>
+              <div className="lc-t">✦ Your first month is on us — unlimited.</div>
+              <p>
+                No card, no trial countdown you have to cancel. Thirty days of everything Veylaro can do,
+                because the only honest way to sell a local AI is to let you actually use it.
+              </p>
+              <p style={{ color: "var(--dim)", fontSize: 12 }}>
+                After that: 200 messages a week free forever, or go Pro for unlimited. Your call, later.
+              </p>
+            </div>
+            <div className="ob-ctas">
+              <button className="btn primary" onClick={() => setStep(2)}>Nice. What else? →</button>
+            </div>
+          </>
+        )}
+        {step === 2 && (
+          <>
+            <h1 style={{ fontSize: 27 }}>Three things worth knowing.</h1>
+            <div className="ob-list">
+              <div><b>It only touches what you point it at.</b> Each session is locked to one file or folder. It physically cannot wander — and system files, keys and keychains are blocked in every mode.</div>
+              <div><b>It shows its work.</b> You'll see it think, plan, edit, run your app and click through it with its own cursor. No black box.</div>
+              <div><b>It gets better while you sleep.</b> Optional. Off by default. Everything it learns stays on this machine.</div>
+            </div>
+            <div className="ob-ctas">
+              <button className="btn primary" onClick={onDone}>Let's build something →</button>
+            </div>
+            {ram && <div className="ob-ram">We'll set you up on the right model for your {ram} GB of memory.</div>}
+          </>
+        )}
       </div>
     </div>
   );

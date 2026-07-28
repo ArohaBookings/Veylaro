@@ -11,15 +11,14 @@ export const SUITES: Suite[] = [
   {
     id: "swe",
     label: "SWE-bench Verified",
-    desc: "Real-world software engineering — public leaderboard figures, July 2026. Laro numbers are Veylaro's on-device proxy run, not an official SWE-bench submission.",
+    desc: "Real-world software engineering. Frontier figures are vendor-published; Laro Med is our own held-out run under official scoring (FAIL_TO_PASS and PASS_TO_PASS), n=24, 95% CI [9.2–40.5%]. Small sample, wide interval, stated plainly — the harness ships with the app so you can re-run it.",
     entries: [
       { name: "Claude Fable 5", co: "Anthropic", value: 95.0, logo: "claude" },
       { name: "Claude Opus 4.8", co: "Anthropic", value: 88.6, logo: "claude" },
       { name: "GPT-5.5", co: "OpenAI", value: 82.6, logo: "openai" },
       { name: "Gemini 3.5 Flash", co: "Google", value: 78.8, logo: "gemini" },
       { name: "Grok 4", co: "xAI", value: 75.0, logo: "grok" },
-      { name: "Laro Max", co: "Veylaro Labs · runs locally", value: 62.0, logo: "veylaro", note: "on-device proxy" },
-      { name: "Laro Lite", co: "Veylaro Labs · runs on 4 GB laptops", value: 48.0, logo: "veylaro", note: "on-device proxy" },
+      { name: "Laro Med", co: "Veylaro Labs · 12B · runs locally", value: 20.8, logo: "veylaro", note: "measured, n=24, CI 9.2–40.5" },
     ],
   },
   {

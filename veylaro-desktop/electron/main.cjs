@@ -3,6 +3,7 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 const { exec } = require("child_process");
+const guard = require("./guard.cjs");
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL || null;
 
@@ -72,22 +73,78 @@ ipcMain.handle("veylaro:search", async (_e, query) => {
 });
 
 // Terminal mode: run a real shell command, cwd'd to the session scope.
-ipcMain.handle("veylaro:exec", (_e, cmd, cwd) => {
+// Every command passes the Guard first — catastrophic ones never run at all.
+ipcMain.handle("veylaro:exec", (_e, cmd, cwd, opts) => {
+  const verdict = guard.checkCommand(cmd);
+  if (!verdict.allow) {
+    return Promise.resolve({ ok: false, blocked: true, out: `⛔ Blocked by Veylaro's guard: ${verdict.reason}` });
+  }
+  if (verdict.needsConfirm && !(opts && opts.confirmed)) {
+    return Promise.resolve({ ok: false, needsConfirm: true, out: `⚠️ ${verdict.reason}: ${cmd}` });
+  }
   let dir = os.homedir();
   try {
     if (cwd) {
-      const p = cwd.replace(/^~(?=\/|$)/, os.homedir());
+      const p = guard.norm(cwd);
       const st = fs.existsSync(p) && fs.statSync(p);
       dir = st ? (st.isDirectory() ? p : path.dirname(p)) : os.homedir();
     }
   } catch { /* fall back to home */ }
+  const shell = (opts && opts.shell) || process.env.SHELL || (process.platform === "win32" ? undefined : "/bin/zsh");
   return new Promise((resolve) => {
-    exec(String(cmd), { cwd: dir, timeout: 120000, maxBuffer: 4 * 1024 * 1024, shell: process.env.SHELL || "/bin/zsh" }, (err, stdout, stderr) => {
+    exec(String(cmd), { cwd: dir, timeout: 180000, maxBuffer: 8 * 1024 * 1024, shell }, (err, stdout, stderr) => {
       const out = [stdout, stderr].filter(Boolean).join("\n").trimEnd();
-      resolve({ out: out || (err ? String(err.message) : "✓ done (no output)"), ok: !err });
+      resolve({ out: out || (err ? String(err.message) : "\u2713 done (no output)"), ok: !err });
     });
   });
 });
+
+/* ---- real file access, every call guarded ---- */
+
+ipcMain.handle("veylaro:readFile", (_e, target) => {
+  try {
+    const t = guard.norm(target);
+    const stat = fs.statSync(t);
+    if (stat.size > 2 * 1024 * 1024) return { ok: false, error: "file larger than 2 MB — open it in chunks" };
+    return { ok: true, content: fs.readFileSync(t, "utf8") };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message) };
+  }
+});
+
+ipcMain.handle("veylaro:writeFile", (_e, target, content, ctx) => {
+  const verdict = guard.checkWrite(target, ctx || {});
+  if (!verdict.allow) return { ok: false, blocked: true, error: verdict.reason };
+  if (verdict.needsConfirm && !(ctx && ctx.confirmed)) return { ok: false, needsConfirm: true, error: verdict.reason };
+  try {
+    const t = guard.norm(target);
+    fs.mkdirSync(path.dirname(t), { recursive: true });
+    // never silently clobber: keep one backup of what was there
+    if (fs.existsSync(t)) {
+      try { fs.copyFileSync(t, t + ".veylaro-bak"); } catch { /* best effort */ }
+    }
+    fs.writeFileSync(t, String(content), "utf8");
+    return { ok: true, path: t };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message) };
+  }
+});
+
+ipcMain.handle("veylaro:listDir", (_e, target) => {
+  try {
+    const t = guard.norm(target);
+    const entries = fs.readdirSync(t, { withFileTypes: true })
+      .filter((d) => !d.name.startsWith("."))
+      .slice(0, 500)
+      .map((d) => ({ name: d.name, dir: d.isDirectory() }));
+    return { ok: true, entries };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message) };
+  }
+});
+
+/** Ask the Guard about a path without doing anything — used by the UI. */
+ipcMain.handle("veylaro:checkWrite", (_e, target, ctx) => guard.checkWrite(target, ctx || {}));
 
 ipcMain.handle("veylaro:sysinfo", () => ({
   ramGB: Math.round(os.totalmem() / (1024 * 1024 * 1024)),
