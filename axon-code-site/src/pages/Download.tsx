@@ -48,10 +48,10 @@ export function Download() {
                 <div className="os-meta">Apple Silicon (M1–M4) · macOS 13+ · Universal</div>
                 {open ? (
                   <>
-                    <a href={BUILDS.macArm} download className="btn primary lg" style={{ width: "100%" }}>
+                    <a href={BUILDS.macArm} className="btn primary lg" style={{ width: "100%" }}>
                       <DownloadIcon size={18} /> Download for Mac
                     </a>
-                    <a href={BUILDS.macIntel} download className="dl-alt">Intel Mac build</a>
+                    <a href={BUILDS.macIntel} className="dl-alt">Intel Mac build</a>
                   </>
                 ) : (
                   <span className="btn primary lg ghosted" aria-disabled="true" style={{ width: "100%" }}>
@@ -60,7 +60,7 @@ export function Download() {
                   </span>
                 )}
                 <div className="dl-req">
-                  <span>Laro Max &amp; Lite included</span><span>Lite runs on 4 GB RAM</span><span>SHA-256 published</span>
+                  <span>All three models</span><span>macOS 13+</span><a href={BUILDS.checksums} target="_blank" rel="noreferrer">SHA-256 ↗</a>
                 </div>
               </GlowCard>
             </Reveal>
@@ -71,10 +71,10 @@ export function Download() {
                 <div className="os-meta">Windows 11 / 10 (64-bit) · NVIDIA, AMD or CPU · .exe</div>
                 {open ? (
                   <>
-                    <a href={BUILDS.win} download className="btn primary lg" style={{ width: "100%" }}>
+                    <a href={BUILDS.win} className="btn primary lg" style={{ width: "100%" }}>
                       <DownloadIcon size={18} /> Download for Windows
                     </a>
-                    <a href={BUILDS.winPortable} download className="dl-alt">Portable .exe (no install)</a>
+                    <a href={BUILDS.winPortable} className="dl-alt">Portable .exe (no install)</a>
                   </>
                 ) : (
                   <span className="btn primary lg ghosted" aria-disabled="true" style={{ width: "100%" }}>
@@ -83,7 +83,7 @@ export function Download() {
                   </span>
                 )}
                 <div className="dl-req">
-                  <span>Windows 10 &amp; 11 · x64</span><span>8 GB RAM minimum</span><span>SHA-256 published</span>
+                  <span>Windows 10 &amp; 11 · x64</span><span>4 GB RAM minimum</span><a href={BUILDS.checksums} target="_blank" rel="noreferrer">SHA-256 ↗</a>
                 </div>
               </GlowCard>
             </Reveal>

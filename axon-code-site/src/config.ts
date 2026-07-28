@@ -7,13 +7,17 @@
  *  Flip to true to arm the real downloads. */
 export const DOWNLOADS_ENABLED = false;
 
-/** Packaged desktop artifacts (served from /public/downloads).
-    Apple Silicon and Intel Macs, plus Windows x64. */
+/** Packaged desktop artifacts. Hosted on GitHub Releases — free, fast,
+    global CDN, no Apple developer fee, and the checksums sit next to
+    the files so anyone can verify what they downloaded. */
+const REL = "https://github.com/ArohaBookings/Veylaro/releases/download/v1.0.0";
 export const BUILDS = {
-  macArm: "/downloads/VeylaroCode-1.0.0-arm64-mac.zip",
-  macIntel: "/downloads/VeylaroCode-1.0.0-x64-mac.zip",
-  win: "/downloads/VeylaroCode-Setup-1.0.0.exe",
-  winPortable: "/downloads/VeylaroCode-1.0.0-win-portable.exe",
+  macArm: `${REL}/VeylaroCode-1.0.0-arm64-mac.zip`,
+  macIntel: `${REL}/VeylaroCode-1.0.0-x64-mac.zip`,
+  win: `${REL}/VeylaroCode-Setup-1.0.0.exe`,
+  winPortable: `${REL}/VeylaroCode-1.0.0-win-portable.exe`,
+  checksums: `${REL}/SHA256SUMS.txt`,
+  releasePage: "https://github.com/ArohaBookings/Veylaro/releases/tag/v1.0.0",
 } as const;
 
 /** Back-compat alias. */
