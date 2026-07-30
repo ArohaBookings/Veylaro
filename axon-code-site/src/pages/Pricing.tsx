@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Reveal, GlowCard } from "../components/FX";
-import { Check, Plus, DownloadIcon, ArrowRight } from "../components/Icons";
+import { Check, Plus, DownloadIcon, ArrowRight, Sparkle } from "../components/Icons";
 import { STRIPE_LINKS } from "../config";
 
 type Plan = {
@@ -25,7 +25,8 @@ const PLANS: Plan[] = [
     cta: "Download free",
     to: "/download",
     features: [
-      { t: "Laro Lite & Laro Max — the real models, full weights" },
+      { t: "Laro Lite — full local weights" },
+      { t: "First 30 days unlimited at launch" },
       { t: "200 agent messages per week — resets every Monday" },
       { t: "Chat, file & image understanding" },
       { t: "Single-project memory" },
@@ -100,11 +101,11 @@ const FAQS = [
   },
   {
     q: "If it runs on my machine, why is there a subscription?",
-    a: "The subscription funds what keeps Veylaro the best local model in the world: continuous training runs, new model versions, the agent runtime, and support. The software and weights live on your machine — the subscription keeps them improving. Stop paying and the app keeps working; you just stop receiving new model updates and Pro features.",
+    a: "The subscription funds verified training runs, model updates, the agent runtime and support. The software and installed weights live on your machine. Stop paying and the local app keeps working on the Free entitlement; model updates and paid features stop.",
   },
   {
     q: "What hardware do I need?",
-    a: "Any Apple Silicon Mac (M1 or newer) with 16 GB unified memory, or a Windows machine with a modern GPU (8 GB+ VRAM) or recent CPU with 32 GB RAM. Veylaro auto-selects the right model — Laro Max on 16 GB+ machines, Laro Lite on anything down to 4 GB. More power means faster tokens, never a different privacy story.",
+    a: "Laro Lite needs 4 GB RAM and is recommended at 8 GB. Laro Med needs 12 GB and is recommended at 16 GB. Laro Max needs 24 GB and is recommended at 32 GB. Veylaro selects conservatively so the app stays responsive.",
   },
   {
     q: "Does my code or my prompts ever leave my machine?",
@@ -120,7 +121,7 @@ const FAQS = [
   },
   {
     q: "What about refunds?",
-    a: "14-day free trial on Pro, and a no-questions 30-day refund window after your first payment. If Veylaro doesn't earn its seat, we don't want your money.",
+    a: "At launch, every new account gets 30 days of unlimited use across the plan it selects. No card is required for Free. Paid purchases also have a 30-day refund window after the first payment.",
   },
 ];
 
@@ -162,6 +163,11 @@ export function Pricing() {
               />
               <span className={annual ? "on" : ""}>Annual</span>
               <span className="save-pill">2 months free</span>
+            </div>
+            <div className="launch-offer">
+              <Sparkle size={16} />
+              <span><b>Launch offer:</b> the first 30 days are unlimited on every plan.</span>
+              <span>No card on Free.</span>
             </div>
           </Reveal>
         </div>
@@ -227,7 +233,8 @@ export function Pricing() {
             <p className="footnote center" style={{ marginTop: 26 }}>
               All plans run 100% locally. Billed securely by Stripe in USD or NZD — checkout localizes
               automatically. Annual Pro is $290/year — pay for 10 months, use 12. The Free plan needs
-              only an account; your card is never asked for.
+              only an account; your card is never asked for. Launch-month unlimited applies before
+              the normal plan limits begin.
             </p>
           </Reveal>
         </div>

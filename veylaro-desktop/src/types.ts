@@ -49,7 +49,7 @@ export interface Settings {
   internet: boolean; // web search toggle (only works when online)
   planMode: boolean; // present a plan and wait for approval before acting
   subAgents: SubAgentPref; // auto = 3 lanes on 16GB+ machines, else 2
-  overnight: boolean; // overnight personal-LoRA training opt-in
+  overnight: boolean; // private verified-precedent retrieval opt-in
   reasoning: boolean; // stream the model's visible thinking
   voice: boolean; // Laro reads recaps aloud
   deckOpen: boolean; // right-side Viewport/Tasks deck
@@ -67,8 +67,8 @@ export interface Settings {
   crashReports: boolean; // OFF by default
 
   /* ---- learning ---- */
-  overnightOnlyWhenPlugged: boolean; // trains only on power + idle
-  overnightIntensity: "gentle" | "normal"; // gentle = tiny nightly nudges
+  overnightOnlyWhenPlugged: boolean; // future adapter preparation only on power + idle
+  overnightIntensity: "gentle" | "normal"; // local review/retrieval budget
 
   /* ---- terminal ---- */
   terminalShell: string; // which shell the CLI + terminal mode use
@@ -233,7 +233,7 @@ export const MODELS: Record<
     name: "Laro Med",
     tag: "The sweet spot",
     disk: "7.6 GB",
-    ram: "8 GB RAM and up",
+    ram: "12 GB RAM and up",
     tps: [30, 48],
     blurb: "The measured one. Best balance of smart and fast — our default recommendation.",
   },
@@ -252,12 +252,28 @@ export const LAUNCH_FREE_MONTH_MS = 30 * 24 * 3600 * 1000;
 /** How many people one user can refer for a free month each. */
 export const REFERRAL_MAX = 5;
 
+/** Guard context passed with every write/exec so the main-process Guard can
+    decide: which folder the session is scoped to, and whether the user has
+    switched on full-disk access. `confirmed` acknowledges a needsConfirm. */
+export interface GuardCtx {
+  scope?: string;
+  scopeKind?: "file" | "folder";
+  fullDisk?: boolean;
+  confirmed?: boolean;
+}
+
 /** Electron bridge (present only in the desktop build). */
 export interface VeylaroBridge {
   pickFile: () => Promise<string | null>;
   pickFolder: () => Promise<string | null>;
+  newProject: (name: string) => Promise<string | { error: string } | null>;
+  powerState?: () => Promise<{ idleSec: number; onBattery: boolean; ok: boolean }>;
   sysinfo: () => Promise<{ ramGB: number; platform: string; arch: string; cpus: number; version: string }>;
-  exec: (cmd: string, cwd?: string) => Promise<{ out: string; ok: boolean }>;
+  exec: (cmd: string, cwd?: string, opts?: { confirmed?: boolean; shell?: string }) => Promise<{ out: string; ok: boolean; blocked?: boolean; needsConfirm?: boolean }>;
+  readFile?: (p: string) => Promise<{ ok: boolean; content?: string; error?: string }>;
+  writeFile?: (p: string, content: string, ctx?: GuardCtx) => Promise<{ ok: boolean; path?: string; blocked?: boolean; needsConfirm?: boolean; error?: string }>;
+  listDir?: (p: string) => Promise<{ ok: boolean; entries?: { name: string; dir: boolean }[]; error?: string }>;
+  checkWrite?: (p: string, ctx?: GuardCtx) => Promise<{ allow: boolean; needsConfirm?: boolean; reason?: string }>;
   search: (query: string) => Promise<{ ok: boolean; results: { title: string; url: string; snippet: string }[] }>;
   isDesktop: boolean;
 }

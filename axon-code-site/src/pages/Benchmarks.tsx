@@ -12,11 +12,12 @@ export function Benchmarks() {
           <Reveal>
             <span className="eyebrow"><span className="dot" />Benchmarks</span>
             <h1 className="h-display" style={{ fontSize: "clamp(40px, 6vw, 76px)" }}>
-              We benchmark against giants.<br /><span className="grad-text">From your desk.</span>
+              90.9% on HumanEval.<br /><span className="grad-text">On a laptop. Offline.</span>
             </h1>
             <p className="lede">
-              The frontier cloud models are extraordinary — and they should be, with a data center behind
-              them. Veylaro holds its own from a single machine. Yours.
+              Laro Med solved 149 of 164 — every line executed, incomplete output counted as a
+              failure. That lands it between GPT-4o (90.2%) and Claude 3.5 Sonnet (92%) on the same
+              benchmark, running offline on a 16 GB laptop. No API. No data leaving the machine.
             </p>
           </Reveal>
         </div>
@@ -28,9 +29,10 @@ export function Benchmarks() {
             <GlowCard style={{ padding: "42px 38px" }}>
               <BenchmarkChart />
               <p className="footnote" style={{ marginTop: 30 }}>
-                Cloud model scores are publicly reported figures from each lab (Anthropic, OpenAI, Google, xAI),
-                retrieved January 2026. Veylaro figures are preliminary internal evaluations on the same suites
-                and will be replaced with final published numbers at general availability. Higher is better.
+                Higher is better. Laro bars are executed locally on a 16 GB Mac; competitor bars are
+                each lab's last officially published HumanEval on their own harness (sources linked).
+                The newest frontier models no longer publish HumanEval, so their most recent published
+                score is used — no invented numbers.
               </p>
             </GlowCard>
           </Reveal>
@@ -41,8 +43,8 @@ export function Benchmarks() {
       <section className="section">
         <div className="container">
           <Reveal className="center" style={{ marginBottom: 50 }}>
-            <span className="eyebrow"><span className="dot" />The other scoreboard</span>
-            <h2 className="h-xl">Benchmarks the cloud<br /><span className="grad-text">can never win.</span></h2>
+            <span className="eyebrow"><span className="dot" />The local advantage</span>
+            <h2 className="h-xl">Capability is measured.<br /><span className="grad-text">Privacy is architectural.</span></h2>
             <p className="lede" style={{ marginTop: 16 }}>
               Raw capability is half the story. The other half is what it costs you — in privacy, availability
               and control. Here, it isn't close.
@@ -53,7 +55,7 @@ export function Benchmarks() {
               <GlowCard className="stat-card">
                 <Shield size={26} className="stat-ic" />
                 <div className="big grad-text"><CountUp to={0} /></div>
-                <div className="lbl">bytes of code uploaded — cloud agents upload every request</div>
+                <div className="lbl">bytes of project code sent by local inference — optional online services are separate</div>
               </GlowCard>
             </Reveal>
             <Reveal delay={100}>
@@ -66,15 +68,15 @@ export function Benchmarks() {
             <Reveal delay={200}>
               <GlowCard className="stat-card">
                 <WifiOff size={26} className="stat-ic" />
-                <div className="big grad-text"><CountUp to={100} suffix="%" /></div>
-                <div className="lbl">uptime for you — no outages, no status pages</div>
+                <div className="big grad-text"><CountUp to={0} /></div>
+                <div className="lbl">cloud inference outages — your local runtime has no provider dependency</div>
               </GlowCard>
             </Reveal>
             <Reveal delay={300}>
               <GlowCard className="stat-card">
                 <Bolt size={26} className="stat-ic" />
-                <div className="big grad-text"><CountUp to={0} suffix="ms" /></div>
-                <div className="lbl">network latency — tokens stream off your own GPU</div>
+                <div className="big grad-text"><CountUp to={0} /></div>
+                <div className="lbl">network round trips for local inference — generation latency still depends on hardware</div>
               </GlowCard>
             </Reveal>
           </div>
@@ -97,20 +99,20 @@ export function Benchmarks() {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr><td>Runs fully on-device</td><td className="col-veylaro"><b>Yes</b></td><td>No</td><td>No</td><td>No</td></tr>
-                  <tr><td>Code stays private</td><td className="col-veylaro"><b>By physics</b></td><td>By policy</td><td>By policy</td><td>By policy</td></tr>
-                  <tr><td>Works offline</td><td className="col-veylaro"><b>Yes</b></td><td>No</td><td>No</td><td>No</td></tr>
-                  <tr><td>Usage limits</td><td className="col-veylaro"><b>None on Pro</b></td><td>Session/weekly caps</td><td>Rate limits</td><td>Daily quotas</td></tr>
+                  <tr><td>Local model inference</td><td className="col-veylaro"><b>Built in</b></td><td>Cloud</td><td>Cloud</td><td>Cloud</td></tr>
+                  <tr><td>Project code sent to model provider</td><td className="col-veylaro"><b>No</b></td><td>Required</td><td>Required</td><td>Required</td></tr>
+                  <tr><td>Core coding chat works offline</td><td className="col-veylaro"><b>Yes</b></td><td>No</td><td>No</td><td>No</td></tr>
+                  <tr><td>Usage on Veylaro Pro</td><td className="col-veylaro"><b>Unlimited</b></td><td>See provider</td><td>See provider</td><td>See provider</td></tr>
                   <tr><td>Agentic multi-file edits</td><td className="col-veylaro"><b>Yes</b></td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
-                  <tr><td>Persistent local memory</td><td className="col-veylaro"><b>Yes</b></td><td>Partial</td><td>Partial</td><td>Partial</td></tr>
-                  <tr><td>One flat price</td><td className="col-veylaro"><b>$29/mo</b></td><td>$20–200/mo</td><td>$10–200/mo</td><td>Usage-based</td></tr>
+                  <tr><td>Verified precedent memory on device</td><td className="col-veylaro"><b>Opt in</b></td><td>Provider dependent</td><td>Provider dependent</td><td>Provider dependent</td></tr>
+                  <tr><td>First month</td><td className="col-veylaro"><b>Unlimited, no card</b></td><td>See provider</td><td>See provider</td><td>See provider</td></tr>
                   <tr><td>Your GPU does the work</td><td className="col-veylaro"><b>Yes</b></td><td>—</td><td>—</td><td>—</td></tr>
                 </tbody>
               </table>
             </GlowCard>
             <p className="footnote" style={{ marginTop: 18 }}>
-              Comparison reflects each product's standard consumer offering as of January 2026. Competitor
-              names and marks belong to their respective owners; figures from public pricing and docs.
+              Product terms change. This table describes the intended Veylaro architecture and broad
+              product categories, not a benchmark. Verify current competitor limits before purchasing.
             </p>
           </Reveal>
         </div>
@@ -123,21 +125,21 @@ export function Benchmarks() {
             <span className="eyebrow"><span className="dot" />Methodology</span>
             <h2 className="h-lg">Measured, not marketed.</h2>
             <p className="lede" style={{ marginTop: 14, fontSize: 16 }}>
-              Every Veylaro release runs the full public suites — SWE-bench Verified, Terminal-Bench and
-              GPQA Diamond — plus an internal harness of 1,200 real-world engineering tasks. We publish
-              the numbers whether we like them or not, alongside the harness itself so you can reproduce
-              every score on your own hardware. When the weights ship, the receipts ship with them.
+              We run the standard HumanEval set: all 164 problems, generated code executed,
+              thinking off, and incomplete output scored as failure. Raw local artifacts retain
+              task-level results for HumanEval. Scores stay tied to the exact artifact that produced
+              them; an installed preview model does not inherit a different model's result.
             </p>
           </Reveal>
           <Reveal variant="from-right" delay={120}>
             <GlowCard>
-              <h3 style={{ marginBottom: 14 }}>What "preliminary" means</h3>
-              <p>
-                Veylaro's final training run is still in progress. The figures shown are from the current
-                release candidate, evaluated on the public test splits with the standard agent harness.
-                Final GA numbers — good or bad — replace them the day we ship. No cherry-picking,
-                no "internal variant" asterisks.
-              </p>
+              <h3 style={{ marginBottom: 14 }}>How we label every number</h3>
+              <ul className="bench-legend">
+                <li><b>Measured</b> — we ran it here, on this hardware, and the raw output is on disk. Only these get quoted as a Laro result.</li>
+                <li><b>Vendor</b> — the lab's own published figure on their own harness.</li>
+                <li><b>Not published</b> — no number exists we can cite. It stays blank rather than guessed.</li>
+                <li><b>Pending</b> — we intend to measure it and haven't yet. Laro Max is here: it needs 24 GB and our test box has 16.</li>
+              </ul>
             </GlowCard>
           </Reveal>
         </div>

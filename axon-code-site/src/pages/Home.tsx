@@ -15,7 +15,7 @@ const STORY = [
   {
     num: "01 — Install",
     title: "The model downloads with the app.",
-    body: "One installer. Laro Max — or Laro Lite for lighter machines — lands on your SSD: weights, memory, everything. One free account, no API key, no cloud handshake.",
+    body: "One installer. It offers only the Laro tiers that have passed their individual release gates, then recommends a fit for your memory. No hosted inference API key.",
   },
   {
     num: "02 — Understand",
@@ -148,7 +148,7 @@ export function Home() {
         <div className="container wide hero-inner">
           <div>
             <Reveal>
-              <span className="eyebrow"><span className="dot" />The most powerful local AI in the world</span>
+              <span className="eyebrow"><span className="dot" />Local coding, governed by execution</span>
             </Reveal>
             <h1 className="h-display">
               <WordReveal text="Your code." startDelay={100} />
@@ -159,9 +159,9 @@ export function Home() {
             </h1>
             <Reveal delay={250}>
               <p className="lede" style={{ marginTop: 28 }}>
-                Veylaro is an agentic coding AI that lives on your computer — not in someone
-                else's data center. It reads your codebase, writes real code, runs your tests and
-                never sends a single byte to the cloud.
+                Veylaro is a local coding environment built to read scoped projects, propose
+                focused edits and verify them on your machine. Your code is not sent to a hosted
+                inference service.
               </p>
             </Reveal>
             <Reveal delay={400}>
@@ -246,8 +246,8 @@ export function Home() {
           <Reveal delay={150}>
             <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginTop: 34 }}>
               <span className="chip">✦ Yours — it lives on your hardware</span>
-              <span className="chip">✦ Private by physics, not by promise</span>
-              <span className="chip">✦ Always getting smarter — even while you sleep</span>
+              <span className="chip">✦ Local by default, with optional online services</span>
+              <span className="chip">✦ Verified local precedents stay on your device</span>
             </div>
           </Reveal>
         </div>
@@ -261,8 +261,8 @@ export function Home() {
             <h2 className="h-xl">An engineer in your terminal.<br />Not a chatbot in a tab.</h2>
             <p className="lede" style={{ marginTop: 20 }}>
               Give Veylaro a task in plain English. It plans, edits multiple files, runs your tests,
-              reads the failures and keeps going until the job is done — like a senior engineer
-              who never gets tired and never phones home.
+              reads the failures and iterates against real evidence. Model inference and project
+              work stay local; live search and account services are optional.
             </p>
             <ul style={{ listStyle: "none", marginTop: 26, display: "flex", flexDirection: "column", gap: 13 }}>
               {[
@@ -308,7 +308,7 @@ export function Home() {
         <div className="container">
           <Reveal className="center" style={{ marginBottom: 56 }}>
             <span className="eyebrow"><span className="dot" />Capabilities</span>
-            <h2 className="h-xl">Everything a cloud agent does.<br /><span className="grad-text">Nothing a cloud agent takes.</span></h2>
+            <h2 className="h-xl">A coding environment built<br /><span className="grad-text">for local execution.</span></h2>
           </Reveal>
           <div className="bento">
             {[
@@ -338,10 +338,10 @@ export function Home() {
         <div className="container">
           <Reveal className="center" style={{ marginBottom: 46 }}>
             <span className="eyebrow"><span className="dot" />Benchmarks</span>
-            <h2 className="h-xl">Cloud-class results.<br /><span className="grad-text">Zero cloud.</span></h2>
+            <h2 className="h-xl">Measured code generation.<br /><span className="grad-text">Local execution.</span></h2>
             <p className="lede" style={{ marginTop: 18 }}>
-              The frontier labs rent you intelligence by the token. Veylaro puts it on your SSD —
-              and holds its own against the giants.
+              HumanEval is narrow, but reproducible. We publish the two tier results we have
+              executed and leave the rest blank until the evidence exists.
             </p>
           </Reveal>
           <Reveal delay={150}>
@@ -384,7 +384,7 @@ export function Home() {
                   <tr><td>Your code leaves your machine</td><td className="col-veylaro"><b>Never</b></td><td>Every request</td></tr>
                   <tr><td>Usage limits</td><td className="col-veylaro"><b>None</b></td><td>Hourly / weekly caps</td></tr>
                   <tr><td>Works offline</td><td className="col-veylaro"><b>Yes</b></td><td>No</td></tr>
-                  <tr><td>Trains on your data</td><td className="col-veylaro"><b>Impossible</b></td><td>Policy-dependent</td></tr>
+                  <tr><td>Service-side training on your data</td><td className="col-veylaro"><b>No</b></td><td>Policy-dependent</td></tr>
                   <tr><td>Cost at heavy usage</td><td className="col-veylaro"><b>Flat</b></td><td>Escalating</td></tr>
                 </tbody>
               </table>
@@ -400,7 +400,7 @@ export function Home() {
             <div className="cta-band">
               <VeylaroMark size={72} />
               <h2 style={{ marginTop: 24 }}>Own your AI.</h2>
-              <p>Veylaro Code puts a frontier-class coding agent on your own hardware. Free to start. Yours forever.</p>
+              <p>Veylaro Code puts local models, scoped tools and verified project memory on your own hardware.</p>
               <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
                 <span className="btn primary lg ghosted" aria-disabled="true"><Apple size={19} /> Download for Mac<span className="soon-pill">soon</span></span>
                 <span className="btn primary lg ghosted" aria-disabled="true"><Windows size={17} /> Download for Windows<span className="soon-pill">soon</span></span>

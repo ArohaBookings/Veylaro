@@ -3,10 +3,11 @@ import { useStore, uid } from "../state/store";
 import { Attachment, PermMode } from "../types";
 import { Globe, ImageIc, Lock, Map, Mic, Send } from "./icons";
 import { MODELS, ModelId } from "../types";
+import { fitCheck } from "../engine/tiers";
 
 /** Claude-Code-style model picker living in the composer bar. */
 function ModelMenu() {
-  const { settings, setSettings } = useStore();
+  const { settings, setSettings, ramGB } = useStore();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -26,21 +27,35 @@ function ModelMenu() {
       {open && (
         <div className="mmenu-pop">
           <div className="mmenu-h">Models</div>
-          {(["lite", "max"] as ModelId[]).map((m) => (
-            <button
-              key={m}
-              className={`mmenu-item ${settings.model === m ? "on" : ""}`}
-              onClick={() => {
-                setSettings({ model: m });
-                setOpen(false);
-              }}
-            >
-              <span className="mm-name">{MODELS[m].name}</span>
-              <span className="mm-desc">{m === "lite" ? "fast · light machines" : "smartest · full weights"}</span>
-              {settings.model === m && <span className="mm-check">✓</span>}
-            </button>
-          ))}
-          <div className="mmenu-f">Auto-picked for your hardware · final weights land with training</div>
+          {(["lite", "med", "max"] as ModelId[]).map((m) => {
+            const fit = fitCheck(m, ramGB);
+            const unavailable = fit.status === "insufficient";
+            return (
+              <button
+                key={m}
+                className={`mmenu-item ${settings.model === m ? "on" : ""}`}
+                disabled={unavailable}
+                title={fit.note}
+                onClick={() => {
+                  setSettings({ model: m, autoPickModel: false });
+                  setOpen(false);
+                }}
+              >
+                <span className="mm-name">{MODELS[m].name}</span>
+                <span className="mm-desc">
+                  {unavailable
+                    ? `needs ${MODELS[m].ram}`
+                    : m === "lite"
+                      ? "fast · light machines"
+                      : m === "med"
+                        ? "balanced · larger jobs"
+                        : "deepest · large-memory machines"}
+                </span>
+                {settings.model === m && <span className="mm-check">✓</span>}
+              </button>
+            );
+          })}
+          <div className="mmenu-f">Auto-pick follows the memory available on this machine.</div>
         </div>
       )}
       <button className="mmenu-btn" onClick={() => setOpen((v) => !v)} title={MODELS[settings.model].blurb}>
@@ -53,7 +68,7 @@ function ModelMenu() {
 const PERM_LABELS: Record<PermMode, string> = {
   ask: "Ask before edits & commands",
   edits: "Accept edits, ask for commands",
-  bypass: "Bypass — full auto, never stops",
+  bypass: "Bypass — full auto",
 };
 
 export function Composer({
@@ -292,9 +307,15 @@ export function Composer({
               {store.remaining} msgs left this week
             </span>
           )}
-          <button className="send" disabled={!canSend} onClick={send} aria-label="Send">
-            <Send size={16} />
-          </button>
+          {running ? (
+            <button className="send stop" onClick={() => store.stopRun()} aria-label="Stop" title="Stop Laro — halts cleanly right where it is">
+              <span className="stop-sq" aria-hidden />
+            </button>
+          ) : (
+            <button className="send" disabled={!canSend} onClick={send} aria-label="Send">
+              <Send size={16} />
+            </button>
+          )}
         </div>
       </div>
     </div>

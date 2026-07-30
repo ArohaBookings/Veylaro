@@ -11,6 +11,3 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     detectSessionInUrl: true, // completes the email-confirmation redirect
   },
 });
-
-/** Accounts allowed into Mission Control (Veylaro admin login). */
-export const SUPER_ADMINS = ["leoanthonybons@gmail.com"];

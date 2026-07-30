@@ -106,6 +106,49 @@ export function AdminControls() {
             {cfg.launch_month_on ? "Turn off" : "Turn on"}
           </button>
         </Row>
+        <Row
+          title="Unlimited for EVERYONE (kill-switch)"
+          sub={cfg.unlimited_for_all
+            ? "LIVE — every account, free or paid, has uncapped usage right now. The app honours this the moment it syncs."
+            : "Off — normal per-plan limits apply (free tier capped, launch month + paid uncapped)."}
+        >
+          <button
+            className={`btn ${cfg.unlimited_for_all ? "ghost" : "primary"}`}
+            disabled={busy !== null || state === "missing"}
+            onClick={() => set({ unlimited_for_all: !cfg.unlimited_for_all }, "Unlimited-for-all")}
+          >
+            {busy === "Unlimited-for-all" ? "Saving…" : cfg.unlimited_for_all ? "Turn OFF unlimited" : "Turn ON unlimited for all"}
+          </button>
+        </Row>
+      </GlowCard>
+
+      <GlowCard className="panel" style={{ marginTop: 16 }}>
+        <h4>Model release gates</h4>
+        <p style={{ color: "var(--dim)", fontSize: 13, marginBottom: 8 }}>
+          A tier appears as downloadable only when its own gate and the global
+          download switch are both on. Keep a tier off until its signed artifact,
+          checksum, licence notice and required benchmark evidence are complete.
+        </p>
+        {([
+          ["Laro Lite", "4B · 4 GB minimum · HumanEval measured", "lite_download_enabled"],
+          ["Laro Med", "12B · 12 GB minimum · HumanEval measured", "med_download_enabled"],
+          ["Laro Max", "24B · 24 GB minimum · benchmark pending", "max_download_enabled"],
+        ] as const).map(([title, sub, key]) => (
+          <Row key={key} title={title} sub={`${sub}. ${cfg[key] ? "Enabled for release." : "Held behind the release gate."}`}>
+            <button
+              className={`btn ${cfg[key] ? "ghost" : "primary"}`}
+              disabled={busy !== null || state === "missing"}
+              onClick={() => set({ [key]: !cfg[key] }, title)}
+            >
+              {busy === title ? "Saving…" : cfg[key] ? "Hold tier" : "Enable tier"}
+            </button>
+          </Row>
+        ))}
+        <div className="ctl-cur">
+          Public installer: {cfg.downloads_enabled ? "on" : "off"} · available tiers:{" "}
+          {[cfg.lite_download_enabled && "Lite", cfg.med_download_enabled && "Med", cfg.max_download_enabled && "Max"]
+            .filter(Boolean).join(", ") || "none"}
+        </div>
       </GlowCard>
 
       <GlowCard className="panel" style={{ marginTop: 16 }}>

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, powerMonitor } = require("electron");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
@@ -6,6 +6,22 @@ const { exec } = require("child_process");
 const guard = require("./guard.cjs");
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL || null;
+
+// Single instance only — launching Veylaro again focuses the existing window
+// instead of opening a second (or third) copy.
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const wins = BrowserWindow.getAllWindows();
+    if (wins.length) {
+      const w = wins[0];
+      if (w.isMinimized()) w.restore();
+      w.focus();
+    }
+  });
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -41,10 +57,40 @@ function createWindow() {
 }
 
 ipcMain.handle("veylaro:pick", async (_e, kind) => {
-  const props = kind === "folder" ? ["openDirectory"] : ["openFile"];
-  const res = await dialog.showOpenDialog({ properties: props });
+  // createDirectory surfaces the "New Folder" button so you can make a fresh
+  // project folder right from the picker instead of only digging into files.
+  const props = kind === "folder"
+    ? ["openDirectory", "createDirectory"]
+    : ["openFile", "createDirectory"];
+  const res = await dialog.showOpenDialog({
+    properties: props,
+    message: kind === "folder" ? "Pick or create a folder for Laro to work in" : "Pick a file for Laro to work on",
+    buttonLabel: "Use this",
+  });
   if (res.canceled || !res.filePaths.length) return null;
   return res.filePaths[0];
+});
+
+// New project: create a fresh, empty folder and hand it back as the session
+// scope, so you never have to hunt for somewhere for Laro to write into.
+ipcMain.handle("veylaro:newProject", async (_e, name) => {
+  const res = await dialog.showOpenDialog({
+    properties: ["openDirectory", "createDirectory"],
+    message: "Choose where to create the new project",
+    buttonLabel: "Create here",
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const safe = String(name || "veylaro-project").replace(/[^\w.-]+/g, "-").slice(0, 60) || "veylaro-project";
+  let dir = path.join(res.filePaths[0], safe);
+  let n = 2;
+  while (fs.existsSync(dir)) { dir = path.join(res.filePaths[0], `${safe}-${n++}`); }
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "README.md"), `# ${name || safe}\n\nCreated with Veylaro Code.\n`, "utf-8");
+    return dir;
+  } catch (e) {
+    return { error: String(e && e.message || e) };
+  }
 });
 
 // Internet search: fetch DuckDuckGo results server-side (no CORS in main).
@@ -153,6 +199,23 @@ ipcMain.handle("veylaro:sysinfo", () => ({
   cpus: os.cpus().length,
   version: app.getVersion(),
 }));
+
+// Power + idle telemetry for the overnight-learning scheduler. The gating logic
+// itself lives in the renderer (testable TS); the main process only reports the
+// two facts the renderer can't see on its own: seconds since last input, and
+// whether we're on battery. Never throws — a missing powerMonitor just reports
+// "active + plugged" so learning simply won't start rather than crash.
+ipcMain.handle("veylaro:powerState", () => {
+  try {
+    return {
+      idleSec: powerMonitor.getSystemIdleTime(),
+      onBattery: powerMonitor.isOnBatteryPower(),
+      ok: true,
+    };
+  } catch {
+    return { idleSec: 0, onBattery: false, ok: false };
+  }
+});
 
 app.whenReady().then(() => {
   createWindow();

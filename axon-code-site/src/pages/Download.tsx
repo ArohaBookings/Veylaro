@@ -9,7 +9,12 @@ import { RegisterInterest } from "../components/Interest";
 export function Download() {
   // the live switch wins; the compile-time flag is the offline fallback
   const cfg = useAppConfig();
-  const open = cfg.downloads_enabled || DOWNLOADS_ENABLED;
+  const tierOpen = {
+    lite: cfg.lite_download_enabled,
+    med: cfg.med_download_enabled,
+    max: cfg.max_download_enabled,
+  };
+  const open = (cfg.downloads_enabled || DOWNLOADS_ENABLED) && Object.values(tierOpen).some(Boolean);
 
   return (
     <main>
@@ -24,8 +29,8 @@ export function Download() {
               One download.<br /><span className="grad-text">The whole intelligence.</span>
             </h1>
             <p className="lede">
-              The installer ships with the full Laro model inside. One free account, no API keys,
-              no setup wizard from hell. Install, sign in, open a project, start building.
+              The installer sets up Veylaro Code and offers only model tiers that have passed
+              their individual release gate. One account, no API keys, and no cloud inference.
             </p>
             {!open && (
               <div className="interest-band">
@@ -60,7 +65,7 @@ export function Download() {
                   </span>
                 )}
                 <div className="dl-req">
-                  <span>All three models</span><span>macOS 13+</span><a href={BUILDS.checksums} target="_blank" rel="noreferrer">SHA-256 ↗</a>
+                  <span>Released tiers only</span><span>macOS 13+</span><a href={BUILDS.checksums} target="_blank" rel="noreferrer">SHA-256 ↗</a>
                 </div>
               </GlowCard>
             </Reveal>
@@ -88,6 +93,28 @@ export function Download() {
               </GlowCard>
             </Reveal>
           </div>
+          {open && (
+            <Reveal delay={160}>
+              <GlowCard className="dl-note" style={{ marginTop: 26, padding: "20px 24px" }}>
+                <h4 style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+                  <Apple size={16} /> First time you open it on a Mac
+                </h4>
+                <p style={{ color: "var(--muted)", fontSize: 14, lineHeight: 1.65, margin: 0 }}>
+                  Apple notarization is in progress, so for now macOS may say{" "}
+                  <b>"unidentified developer."</b> That's expected and safe — the app is signed,
+                  just not yet Apple-notarized. To open it the first time:
+                </p>
+                <ol style={{ color: "var(--muted)", fontSize: 14, lineHeight: 1.8, margin: "10px 0 0", paddingLeft: 20 }}>
+                  <li><b>Right-click</b> (or Control-click) the Veylaro Code app → <b>Open</b>.</li>
+                  <li>In the dialog, click <b>Open</b> again. macOS remembers it after that.</li>
+                  <li>On macOS Sequoia+: if there's no Open button, go to <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b>.</li>
+                </ol>
+                <p style={{ color: "var(--dim)", fontSize: 12.5, marginTop: 10, marginBottom: 0 }}>
+                  Full Apple notarization lands shortly — after that this step disappears entirely.
+                </p>
+              </GlowCard>
+            </Reveal>
+          )}
           <Reveal delay={200}>
             <div style={{ display: "flex", justifyContent: "center", gap: 26, marginTop: 30, flexWrap: "wrap" }}>
               <span className="chip"><Linux size={15} /> Linux — coming soon</span>
@@ -111,17 +138,22 @@ export function Download() {
           </Reveal>
           <div className="tier-cards">
             {[
-              { n: "Laro Lite", p: "4B", d: "2.6 GB", r: "4 GB RAM and up", i: <Gauge size={22} />,
+              { id: "lite" as const, n: "Laro Lite", p: "4B", d: "2.6 GB", r: "4 GB minimum · 8 GB recommended", i: <Gauge size={22} />,
                 b: "Runs on almost anything — old laptops, cheap Windows machines, a Pi with patience. Same agent, feather footprint, near-instant replies." },
-              { n: "Laro Med", p: "12B", d: "7.6 GB", r: "8 GB RAM and up", i: <Sparkle size={22} />, feat: true,
+              { id: "med" as const, n: "Laro Med", p: "12B", d: "7.6 GB", r: "12 GB minimum · 16 GB recommended", i: <Sparkle size={22} />, feat: true,
                 b: "The one we measured hardest and the one most people should run. Best balance of smart and fast on an ordinary laptop." },
-              { n: "Laro Max", p: "24B", d: "14 GB", r: "24 GB RAM and up", i: <Bolt size={22} />,
+              { id: "max" as const, n: "Laro Max", p: "24B", d: "14 GB", r: "24 GB minimum · 32 GB recommended", i: <Bolt size={22} />,
                 b: "Everything we know how to give it — the deepest reasoning, the longest context. For workstations that can feed it." },
             ].map((m, i) => (
               <Reveal key={m.n} delay={i * 110}>
                 <GlowCard style={{ padding: 30, height: "100%", ...(m.feat ? { borderColor: "rgba(216,154,102,0.45)" } : {}) }}>
                   <div className="icon-tile">{m.i}</div>
-                  <h3 style={{ fontSize: 21 }}>{m.n} {m.feat && <span className="tier-pill">most popular</span>}</h3>
+                  <h3 style={{ fontSize: 21 }}>
+                    {m.n} {m.feat && <span className="tier-pill">recommended</span>}
+                    <span className={`release-pill ${tierOpen[m.id] ? "ready" : ""}`}>
+                      {tierOpen[m.id] ? "release enabled" : "release gated"}
+                    </span>
+                  </h3>
                   <p style={{ marginTop: 8 }}>{m.b}</p>
                   <div className="dl-req" style={{ justifyContent: "flex-start", marginTop: 18 }}>
                     <span>{m.p} parameters</span><span>≈ {m.d} on disk</span><span>{m.r}</span>
@@ -165,16 +197,16 @@ export function Download() {
             <span className="eyebrow"><span className="dot" />Requirements</span>
             <h2 className="h-lg">Runs on the machine<br />you already own.</h2>
             <p className="lede" style={{ marginTop: 14, fontSize: 16 }}>
-              Veylaro auto-detects your hardware and loads the strongest Laro it can run well:
-              Max on 16 GB+ machines, Lite everywhere else — down to 4 GB. More power means faster tokens —
-              the privacy story is identical on both.
+              Veylaro auto-detects your hardware and recommends conservatively: Lite below
+              12 GB, Med from 12 GB, and Max from 24 GB. More memory improves speed and
+              context headroom; it does not change the local privacy boundary.
             </p>
             <ul style={{ listStyle: "none", marginTop: 22, display: "flex", flexDirection: "column", gap: 12 }}>
               {[
-                "Laro Max — Apple Silicon M1+, 16 GB unified memory",
-                "Laro Lite — any Mac or PC with 4 GB RAM",
-                "Windows GPU: NVIDIA/AMD with 8 GB+ VRAM for Max",
-                "12 GB free SSD space (Max) · 2.5 GB (Lite)",
+                "Laro Lite — 4 GB minimum, 8 GB recommended",
+                "Laro Med — 12 GB minimum, 16 GB recommended",
+                "Laro Max — 24 GB minimum, 32 GB recommended",
+                "Allow additional free disk space for indexes, projects and updates",
               ].map((t) => (
                 <li key={t} style={{ display: "flex", gap: 10, color: "var(--muted)", fontSize: 15 }}>
                   <Check size={15} /> {t}

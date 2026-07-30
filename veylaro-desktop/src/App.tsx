@@ -91,7 +91,7 @@ function Shell() {
           <VeylaroMark size={20} /> Veylaro <span style={{ color: "var(--copper)", marginLeft: 2 }}>Code</span>
         </span>
         <span className="env">
-          <span className="saved-chip" title="Everything autosaves locally — chat, files, checkpoints, drafts. Crash-proof.">
+          <span className="saved-chip" title="Chat, files, checkpoints and drafts autosave locally with a rolling recovery copy.">
             ✓ saved {new Date(lastSaved).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
           <span className="dot-live" /> local ·{" "}
@@ -113,6 +113,32 @@ function Shell() {
         />
 
         <div className="main">
+          {store.sessions.length > 0 && (
+            <div className="chat-tabs" role="tablist" aria-label="Open chats">
+              {store.sessions.map((s) => (
+                <button
+                  key={s.id}
+                  role="tab"
+                  aria-selected={s.id === active?.id}
+                  className={`ctab ${s.id === active?.id ? "on" : ""}`}
+                  onClick={() => store.selectSession(s.id)}
+                  title={s.scope}
+                >
+                  <ChatIc size={11} className="ctab-ic" />
+                  <span className="ctab-t">{s.title || "New chat"}</span>
+                  <span
+                    className="ctab-x"
+                    role="button"
+                    aria-label={`Close ${s.title || "chat"}`}
+                    onClick={(e) => { e.stopPropagation(); store.deleteSession(s.id); }}
+                  >
+                    ×
+                  </span>
+                </button>
+              ))}
+              <button className="ctab-new" onClick={() => setModal("new")} title="New chat (⌘N)" aria-label="New chat">+</button>
+            </div>
+          )}
           <div className="chat-head slim">
             <span className="sess-title" title={active?.scope || ""}>{active ? active.title : "Veylaro Code"}</span>
             {active && (
@@ -149,7 +175,7 @@ function Shell() {
                 <h2>Point Laro at something.</h2>
                 <p>
                   Start a session, choose a file or folder, and give it real work. It plans, edits,
-                  runs and verifies — and it never phones home.
+                  runs and verifies locally. Web search and account sync stay optional.
                 </p>
                 <div className="hints">
                   <button onClick={() => setModal("new")}>✦ New session — pick a file to work on</button>

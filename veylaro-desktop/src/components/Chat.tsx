@@ -85,18 +85,48 @@ function CompactCmd({ ev }: { ev: Extract<AgentEvent, { kind: "cmd" }> }) {
 
 /* ---- live "thinking / working" line with elapsed time + token estimate ---- */
 
+const THINK_WORDS = [
+  "Thinking", "Reasoning", "Planning", "Mapping it out", "Questioning",
+  "Weighing options", "Connecting the dots", "Sketching the shape",
+  "Mastering it", "Reading the room", "Finding the angle", "Joining the dots",
+];
+const WORK_WORDS = [
+  "Building", "Writing the code", "Wiring it up", "Creating", "Shaping",
+  "Refining", "Making it clean", "Running the checks", "Verifying",
+  "Mastering it", "Architecting", "Debugging", "Polishing", "Testing it",
+  "Making it sing", "Tightening the bolts", "Shipping it",
+];
+
 function WorkingLine({ mode, streamedChars }: { mode: "think" | "work"; streamedChars: number }) {
   const [sec, setSec] = useState(0);
+  const [wi, setWi] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setSec((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, []);
+  useEffect(() => {
+    const t = setInterval(() => setWi((i) => i + 1), 1800); // rotate the verb
+    return () => clearInterval(t);
+  }, []);
+  const words = mode === "think" ? THINK_WORDS : WORK_WORDS;
+  const word = words[wi % words.length];
   const tokens = streamedChars > 0 ? Math.round(streamedChars / 4) : Math.max(1, Math.round(sec * 32));
   return (
     <span className="working-line">
-      <span className="dots"><i /><i /><i /></span>
-      {mode === "think" ? "Laro is thinking" : "Laro is working"}… {sec}s · ~{tokens} tokens
+      <span className="laro-spin" aria-hidden><VeylaroSpinner /></span>
+      <span key={word} className="think-word">{word}</span>… {sec}s · ~{tokens} tokens
     </span>
+  );
+}
+
+/* small rotating Veylaro mark used as the "thinking" animation */
+function VeylaroSpinner() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 240 240" className="laro-spinner-svg">
+      <path d="M 102 60 L 72 60 Q 58 60 61 73 C 72 114 97 165 116 194 Q 120 200 122 194 C 112 147 106 101 102 60 Z" fill="currentColor" opacity="0.85" />
+      <path d="M 138 60 L 168 60 Q 182 60 179 73 C 168 114 148 158 133 180 Q 129 186 127 180 C 132 145 134 101 138 60 Z" fill="var(--copper, #d89a66)" />
+      <path d="M 120 22 C 122.4 39 126 43.2 138 47.5 C 126 51.8 122.4 56 120 73 C 117.6 56 114 51.8 102 47.5 C 114 43.2 117.6 39 120 22 Z" fill="var(--champagne, #ecc59b)" />
+    </svg>
   );
 }
 
@@ -486,7 +516,8 @@ function AgentMsg({ m, isLast }: { m: Msg; isLast: boolean }) {
           </div>
         )}
         {streaming && streamText && (
-          <div className="ev ev-say">
+          <div className="ev ev-say working">
+            <span className="laro-spin" aria-hidden><VeylaroSpinner /></span>
             <div className="plain" style={{ whiteSpace: "pre-wrap" }}>
               {streamText}
               <span className="stream-caret" />

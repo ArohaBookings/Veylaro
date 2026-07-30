@@ -23,7 +23,7 @@ const PILLARS = [
     icon: <Memory />,
     title: "Memory that compounds",
     body: "Veylaro keeps long-term memory of your conventions, decisions and corrections between sessions. Tell it once that you prefer composition over inheritance — it remembers forever.",
-    points: ["Project memory: architecture & style", "Personal memory: how you like to work", "Fully inspectable and editable", "Stored encrypted on your disk"],
+    points: ["Project memory: architecture & style", "Personal memory: how you like to work", "Fully inspectable and editable", "Stored in local app data"],
   },
   {
     icon: <Eye />,
@@ -38,7 +38,7 @@ const GRID = [
   { icon: <Layers />, t: "Files, images & logs", b: "Screenshots of a broken UI, a crash log, a design mock, a PDF spec — drop them in and Veylaro works from them, locally." },
   { icon: <Gauge />, t: "Native speed", b: "Tokens stream straight off your GPU. No queueing behind a million other users, no rate limiting, no regional outages." },
   { icon: <Sparkle />, t: "Local API", b: "Pro exposes a localhost API. Wire Veylaro into your editor, CI hooks or scripts — your own private model endpoint." },
-  { icon: <WifiOff />, t: "Fully offline", b: "Planes, trains, secure facilities, bad hotel Wi-Fi. Veylaro works identically with the network cable cut." },
+  { icon: <WifiOff />, t: "Core work stays offline", b: "Local inference, project indexing and saved memory keep working without a network. Live search, account verification and updates require a connection." },
   { icon: <InfinityIcon />, t: "No usage limits", b: "It's your hardware. Run Veylaro 24 hours a day on Pro and the only limit is your electricity bill." },
   { icon: <Shield />, t: "Zero telemetry", b: "No analytics on your prompts, no logging of your code, no 'anonymized' data collection. Nothing is phoned home — there is no home to phone." },
   { icon: <Refresh />, t: "Model updates, your call", b: "New Veylaro model versions download as optional updates. You decide when — and old versions keep working forever." },
@@ -53,11 +53,11 @@ export function Features() {
           <Reveal>
             <span className="eyebrow"><span className="dot" />Features</span>
             <h1 className="h-display" style={{ fontSize: "clamp(40px, 6vw, 76px)" }}>
-              A frontier agent.<br /><span className="grad-text">On your hardware.</span>
+              A local coding system.<br /><span className="grad-text">On your hardware.</span>
             </h1>
             <p className="lede">
-              Everything you'd expect from the best cloud coding agents — rebuilt around a radical
-              constraint: your code never leaves your machine.
+              Models, scoped project tools, memory and execution checks built around one constraint:
+              your code does not go to a hosted inference service.
             </p>
           </Reveal>
         </div>
@@ -160,7 +160,7 @@ function PillarArt({ index }: { index: number }) {
             <span style={{ fontSize: 13.5, color: "var(--muted)" }}>{v}</span>
           </div>
         ))}
-        <div style={{ fontSize: 12.5, color: "var(--dim)", textAlign: "center", marginTop: 6 }}><Lock size={12} /> stored encrypted · on your disk · editable anytime</div>
+        <div style={{ fontSize: 12.5, color: "var(--dim)", textAlign: "center", marginTop: 6 }}><Lock size={12} /> local app data · protected by your device account · editable anytime</div>
       </div>
     );
   }

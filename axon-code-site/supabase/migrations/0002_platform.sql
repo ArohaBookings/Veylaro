@@ -13,11 +13,21 @@ create table if not exists public.app_config (
   latest_model_tag   text    not null default 'laro-med',
   update_notes       text    not null default '',
   launch_month_on    boolean not null default true,
+  unlimited_for_all  boolean not null default false,
+  lite_download_enabled boolean not null default false,
+  med_download_enabled  boolean not null default false,
+  max_download_enabled  boolean not null default false,
   updated_at         timestamptz not null default now(),
   constraint app_config_single_row check (id = 1)
 );
 
 insert into public.app_config (id) values (1) on conflict (id) do nothing;
+
+alter table public.app_config
+  add column if not exists unlimited_for_all boolean not null default false,
+  add column if not exists lite_download_enabled boolean not null default false,
+  add column if not exists med_download_enabled boolean not null default false,
+  add column if not exists max_download_enabled boolean not null default false;
 
 alter table public.app_config enable row level security;
 
@@ -30,8 +40,8 @@ create policy "anyone reads config"
 drop policy if exists "admin writes config" on public.app_config;
 create policy "admin writes config"
   on public.app_config for update to authenticated
-  using ( (auth.jwt() ->> 'email') = 'leoanthonybons@gmail.com' )
-  with check ( (auth.jwt() ->> 'email') = 'leoanthonybons@gmail.com' );
+  using ( (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin' )
+  with check ( (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin' );
 
 /* ------------------------------------------------------------------
    2. profiles — one row per signed-up user. Plan + weekly usage live
@@ -59,7 +69,7 @@ alter table public.profiles enable row level security;
 drop policy if exists "own profile read" on public.profiles;
 create policy "own profile read"
   on public.profiles for select to authenticated
-  using ( auth.uid() = id or (auth.jwt() ->> 'email') = 'leoanthonybons@gmail.com' );
+  using ( auth.uid() = id or (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin' );
 
 drop policy if exists "own profile write" on public.profiles;
 create policy "own profile write"
@@ -74,8 +84,8 @@ create policy "own profile insert"
 drop policy if exists "admin resets usage" on public.profiles;
 create policy "admin resets usage"
   on public.profiles for update to authenticated
-  using ( (auth.jwt() ->> 'email') = 'leoanthonybons@gmail.com' )
-  with check ( (auth.jwt() ->> 'email') = 'leoanthonybons@gmail.com' );
+  using ( (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin' )
+  with check ( (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin' );
 
 /* auto-create a profile (with a referral code) on signup */
 create or replace function public.handle_new_user()
@@ -119,4 +129,4 @@ create policy "anyone records a referral"
 drop policy if exists "admin reads referrals" on public.referrals;
 create policy "admin reads referrals"
   on public.referrals for select to authenticated
-  using ( (auth.jwt() ->> 'email') = 'leoanthonybons@gmail.com' );
+  using ( (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin' );

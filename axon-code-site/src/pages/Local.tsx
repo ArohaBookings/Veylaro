@@ -16,7 +16,7 @@ const REASONS = [
   {
     icon: <WifiOff size={20} />,
     t: "Works where the cloud can't",
-    b: "Planes, trains, submarines, secure facilities, client sites with locked-down networks, or just your house when the ISP dies. Veylaro is exactly as smart offline as online, because online was never part of the deal.",
+    b: "Local inference, indexing and memory remain available when the network is gone. Optional current-web retrieval and account services are unavailable offline.",
   },
   {
     icon: <Bolt size={20} />,
@@ -37,7 +37,7 @@ const REASONS = [
 
 const WHO = [
   { t: "Agencies & freelancers", b: "Client NDAs stop meaning 'except our AI vendor'. Every client's code stays on your disk, fully separated by workspace." },
-  { t: "Fintech, health & legal", b: "Regulated codebases can finally use frontier-class AI without a data-processing addendum, a vendor review, or a compliance panic." },
+  { t: "Fintech, health & legal", b: "Regulated teams can keep code out of hosted inference while still performing their own security, licensing and compliance review." },
   { t: "Founders & indie hackers", b: "Your unreleased product is your moat. Build it without shipping your ideas to the companies most capable of competing with you." },
   { t: "Security-critical teams", b: "Air-gapped and zero-trust environments get a real agentic AI for the first time. Enterprise ships with full offline licensing." },
 ];
@@ -147,7 +147,7 @@ export function Local() {
             <div className="cta-band">
               <span style={{ color: "var(--violet)", display: "inline-block" }}><Shield size={44} /></span>
               <h2 style={{ marginTop: 18 }}>Take your code off the grid.</h2>
-              <p>Download Veylaro and get frontier-class agentic coding with a privacy model your security team can verify.</p>
+              <p>Download Veylaro and evaluate local coding against your own projects, policies and threat model.</p>
               <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
                 <Link to="/download" className="btn primary lg"><DownloadIcon size={18} /> Download free</Link>
                 <Link to="/privacy" className="btn ghost lg">Read the privacy policy <ArrowRight size={15} /></Link>

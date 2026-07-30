@@ -1,3 +1,7 @@
+import claudeIcon from "simple-icons/icons/claude.svg";
+import geminiIcon from "simple-icons/icons/googlegemini.svg";
+import kimiIcon from "simple-icons/icons/kimi.svg";
+
 // Compact inline icon set. All icons inherit currentColor.
 type P = { size?: number; className?: string };
 const base = (size = 18) => ({
@@ -106,26 +110,56 @@ export const Android = ({ size, className }: P) => (
   </svg>
 );
 
-/* ---------- AI lab marks (stylized, geometric) ---------- */
+/* ---------- AI lab marks ---------- */
+function SimpleBrandMark({
+  icon,
+  title,
+  size = 20,
+  className,
+  color,
+}: P & { icon: string; title: string; color?: string }) {
+  return (
+    <span
+      className={className}
+      role="img"
+      aria-label={title}
+      style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        background: color || "currentColor",
+        mask: `url(${icon}) center / contain no-repeat`,
+        WebkitMask: `url(${icon}) center / contain no-repeat`,
+      }}
+    />
+  );
+}
+
 export const ClaudeMark = ({ size, className }: P) => (
-  <svg width={size ?? 20} height={size ?? 20} viewBox="0 0 24 24" fill="#D97757" className={className}>
-    <path d="M12 2.5 13.9 8a1 1 0 0 0 .6.6l5.6 1.5-4.5 3.4a1 1 0 0 0-.4.9l.6 5.8-4.9-3.1a1 1 0 0 0-1 0l-4.9 3.1.6-5.8a1 1 0 0 0-.4-.9L3.9 10l5.6-1.5a1 1 0 0 0 .6-.6L12 2.5Z" />
-  </svg>
+  <SimpleBrandMark icon={claudeIcon} title="Claude" size={size} className={className} color="#D97757" />
 );
 export const OpenAIMark = ({ size, className }: P) => (
-  <svg width={size ?? 20} height={size ?? 20} viewBox="0 0 24 24" fill="none" stroke="#f0ebe2" strokeWidth="1.7" className={className}>
-    <path d="M12 4.2a4 4 0 0 1 3.9 2.4M12 4.2a4 4 0 0 0-3.5 2M12 4.2V2.6M15.9 6.6l1.4-.8M15.9 6.6a4 4 0 0 1 2 3.4v3.9a4 4 0 0 1-.4 1.8M8.5 6.2 7 5.4M8.5 6.2a4 4 0 0 0-2.4 3.7v4a4 4 0 0 0 .4 1.7M17.5 15.7l1.4.8M6.5 15.6l-1.4.9M6.5 15.6a4 4 0 0 0 3.6 2.2M17.5 15.7a4 4 0 0 1-3.6 2.1M10.1 17.8 10 19.4M13.9 17.8l.1 1.6" />
-    <circle cx="12" cy="11.9" r="3" />
+  <svg
+    width={size ?? 20}
+    height={size ?? 20}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    role="img"
+    aria-label="OpenAI"
+  >
+    <path d="M22.28 9.82a5.98 5.98 0 0 0-.52-4.91 6.05 6.05 0 0 0-6.51-2.9A6.07 6.07 0 0 0 4.98 4.18a5.98 5.98 0 0 0-4 2.9 6.05 6.05 0 0 0 .75 7.1 5.98 5.98 0 0 0 .51 4.91 6.05 6.05 0 0 0 6.52 2.9A5.98 5.98 0 0 0 13.26 24a6.05 6.05 0 0 0 5.77-4.19 5.98 5.98 0 0 0 4-2.9 6.05 6.05 0 0 0-.75-7.09Zm-9.02 12.6a4.48 4.48 0 0 1-2.88-1.04l.14-.08 4.78-2.76a.79.79 0 0 0 .39-.68v-6.74l2.02 1.17a.07.07 0 0 1 .04.06v5.58a4.5 4.5 0 0 1-4.5 4.49ZM3.6 18.3a4.47 4.47 0 0 1-.54-3.01l.14.09 4.79 2.76a.77.77 0 0 0 .78 0l5.84-3.37v2.33a.08.08 0 0 1-.03.06L9.73 19.96a4.5 4.5 0 0 1-6.14-1.65ZM2.34 7.9a4.48 4.48 0 0 1 2.34-1.97V11.6a.77.77 0 0 0 .39.67l5.81 3.36-2.02 1.17a.07.07 0 0 1-.07 0L4 14.02a4.5 4.5 0 0 1-1.65-6.13Zm16.6 3.86-5.84-3.4L15.1 7.2a.07.07 0 0 1 .07 0l4.83 2.79a4.49 4.49 0 0 1-.68 8.1v-5.66a.79.79 0 0 0-.4-.67Zm2.01-3.03-.14-.08-4.78-2.79a.78.78 0 0 0-.79 0L9.4 9.23V6.9a.07.07 0 0 1 .03-.06l4.83-2.79a4.49 4.49 0 0 1 6.67 4.65ZM8.3 12.86l-2.02-1.16a.08.08 0 0 1-.04-.06V6.07a4.49 4.49 0 0 1 7.36-3.45l-.14.08L8.68 5.46a.79.79 0 0 0-.39.68v6.72Zm1.1-2.37 2.6-1.5 2.61 1.5v3l-2.6 1.5-2.61-1.5v-3Z" />
   </svg>
 );
 export const GeminiMark = ({ size, className }: P) => (
-  <svg width={size ?? 20} height={size ?? 20} viewBox="0 0 24 24" className={className}>
-    <defs><linearGradient id="gemgrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0" stopColor="#4E82EE" /><stop offset="1" stopColor="#B573F1" /></linearGradient></defs>
-    <path fill="url(#gemgrad)" d="M12 1.5c.9 5.6 4.9 9.6 10.5 10.5C16.9 12.9 12.9 16.9 12 22.5 11.1 16.9 7.1 12.9 1.5 12 7.1 11.1 11.1 7.1 12 1.5Z" />
-  </svg>
+  <SimpleBrandMark icon={geminiIcon} title="Google Gemini" size={size} className={className} color="linear-gradient(135deg,#4285F4,#9B72CB,#D96570)" />
 );
 export const GrokMark = ({ size, className }: P) => (
-  <svg width={size ?? 20} height={size ?? 20} viewBox="0 0 24 24" fill="none" stroke="#f0ebe2" strokeWidth="2.1" strokeLinecap="round" className={className}>
-    <path d="M4.2 4.5 19.5 19.8M19.8 4.2 12.9 11M4.5 19.5l4.2-4.2" />
+  // xAI's slashed X
+  <svg width={size ?? 20} height={size ?? 20} viewBox="0 0 24 24" fill="#f0ebe2" className={className}>
+    <path d="m6.1 21.3 7.3-9.9 1.6 2.2-5.7 7.7H6.1Zm-.4-6.9 1.6 2.2-3 4h-2.4l3.8-6.2ZM21.9 2.7l-8.4 11.4-1.6-2.2 6.8-9.2h3.2ZM9.6 2.7l9.3 18.6h-3l-9.3-18.6h3Z" />
   </svg>
+);
+export const KimiMark = ({ size, className }: P) => (
+  <SimpleBrandMark icon={kimiIcon} title="Kimi" size={size} className={className} color="currentColor" />
 );

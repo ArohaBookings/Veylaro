@@ -1,4 +1,7 @@
 import { Reveal } from "../components/FX";
+import { LegalShell } from "../components/LegalNav";
+
+const SECTIONS = ["The base model", "What is ours, and closed", "Your code and your data", "Open-source components", "Benchmarks", "Trademarks", "Questions"];
 
 export function Licenses() {
   return (
@@ -19,7 +22,8 @@ export function Licenses() {
       </section>
 
       <section className="section tight" style={{ paddingTop: 0 }}>
-        <div className="container legal">
+        <div className="container wide">
+         <LegalShell prefix="l" sections={SECTIONS}>
           <div className="callout">
             <p>
               <strong>The short version.</strong> Laro is built on Google's <strong>Gemma</strong> open-weight
@@ -32,7 +36,7 @@ export function Licenses() {
             </p>
           </div>
 
-          <h2>1. The base model</h2>
+          <h2 id="l1">1. The base model</h2>
           <p>
             Laro Lite, Laro Med and Laro Max are all fine-tuned from Google's Gemma family of open-weight
             models. Google publishes Gemma under the Apache License 2.0, alongside the Gemma Terms of Use.
@@ -59,7 +63,7 @@ export function Licenses() {
             here on the same day.
           </p>
 
-          <h2>2. What is ours, and closed</h2>
+          <h2 id="l2">2. What is ours, and closed</h2>
           <p>
             Everything we added is Veylaro Labs' proprietary work and is not open source:
           </p>
@@ -77,14 +81,14 @@ export function Licenses() {
             overnight learning — belongs to you, stays on your machine, and is never collected by us.
           </p>
 
-          <h2>3. Your code and your data</h2>
+          <h2 id="l3">3. Your code and your data</h2>
           <p>
             You own everything you write and everything Laro writes for you. We claim no licence over your
             code, your prompts, or the output — none of it reaches us in the first place. See the{" "}
             <a href="/#/privacy">privacy policy</a> for the full detail.
           </p>
 
-          <h2>4. Open-source components</h2>
+          <h2 id="l4">4. Open-source components</h2>
           <p>
             Veylaro Code is an Electron application and ships with open-source software, each under its own
             licence — including Electron and Node.js (MIT), React (MIT), Vite (MIT), and the Inter, Space
@@ -93,7 +97,7 @@ export function Licenses() {
             machine-readable list is included in every build.
           </p>
 
-          <h2>5. Benchmarks</h2>
+          <h2 id="l5">5. Benchmarks</h2>
           <p>
             Every performance figure we publish ships with the harness that produced it, the exact instance
             list, and a confidence interval — so you can re-run it and check us. Where a number is a
@@ -101,21 +105,22 @@ export function Licenses() {
             ever find a number on this site you can't reproduce, tell us and we'll correct it publicly.
           </p>
 
-          <h2>6. Trademarks</h2>
+          <h2 id="l6">6. Trademarks</h2>
           <p>
             Gemma and Google are trademarks of Google LLC. Veylaro Labs is not affiliated with, endorsed by,
             or sponsored by Google. "Veylaro" and "Laro" are trademarks of Veylaro Labs.
           </p>
 
-          <h2>7. Contact</h2>
+          <h2 id="l7">7. Questions</h2>
           <p>
-            Licensing questions, or think we've got something wrong here? Email{" "}
-            <a href="mailto:support@arohacalls.com">support@arohacalls.com</a> and we'll answer properly.
+            Think we've got something wrong on this page? We'd genuinely rather know. A support channel
+            goes up alongside the public launch, and it'll be listed right here.
           </p>
 
           <p className="footnote" style={{ marginTop: 40 }}>
             Last updated {new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}.
           </p>
+         </LegalShell>
         </div>
       </section>
     </main>

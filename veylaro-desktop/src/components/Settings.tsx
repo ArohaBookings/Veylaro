@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { useStore } from "../state/store";
 import { APP_VERSION, LangPref, ModelId, MODELS, REFERRAL_MAX, SubAgentPref } from "../types";
 import { fitCheck, recommendModel, SYSTEM_TIERS, TIER_BY_ID } from "../engine/tiers";
+import { PRODUCTION_SYSTEMS } from "../engine/executionLattice";
+import {
+  clearVerifiedPrecedents,
+  exportVerifiedPrecedents,
+  verifiedPrecedentCount,
+} from "../engine/localLearning";
 import { Bolt, Check, Clock, Cpu, Eye, Globe, Lock, Shield, Sparkle, TerminalIc, User, Warn, X } from "./icons";
 
 /* ============================================================
@@ -10,12 +16,13 @@ import { Bolt, Check, Clock, Cpu, Eye, Globe, Lock, Shield, Sparkle, TerminalIc,
    ============================================================ */
 
 type PageId =
-  | "general" | "models" | "permissions" | "privacy"
+  | "general" | "models" | "systems" | "permissions" | "privacy"
   | "account" | "referrals" | "learning" | "terminal" | "about";
 
 const PAGES: { id: PageId; label: string; icon: JSX.Element }[] = [
   { id: "general", label: "General", icon: <Sparkle size={15} /> },
   { id: "models", label: "Models & speed", icon: <Cpu size={15} /> },
+  { id: "systems", label: "Systems", icon: <Bolt size={15} /> },
   { id: "permissions", label: "Permissions & safety", icon: <Shield size={15} /> },
   { id: "privacy", label: "Privacy", icon: <Eye size={15} /> },
   { id: "account", label: "Account & billing", icon: <User size={15} /> },
@@ -113,7 +120,7 @@ function GeneralPage() {
       <Toggle on={settings.personality} onChange={(v) => setSettings({ personality: v })}
         title="Let Laro think out loud" sub="You'll see the little asides while it works — “wait, off-by-one right there”." />
       <Toggle on={settings.reasoning} onChange={(v) => setSettings({ reasoning: v })}
-        title="Show its reasoning" sub="Watch how it got to the answer before it answers. Turn off for maximum speed." />
+        title="Show work summaries" sub="See the plan, evidence and verification summary. Turn off for maximum speed." />
       <Toggle on={settings.planMode} onChange={(v) => setSettings({ planMode: v })}
         title="Show me the plan first" sub="Laro writes the plan and waits for your OK before touching anything." />
       <Toggle on={settings.internet} onChange={(v) => setSettings({ internet: v })}
@@ -155,6 +162,8 @@ function ModelsPage() {
           const picked = settings.model === t.id;
           return (
             <button key={t.id} className={`tier-card ${picked ? "on" : ""} fit-${fit.status}`}
+              disabled={fit.status === "insufficient"}
+              title={fit.note}
               onClick={() => setSettings({ model: t.id, autoPickModel: false })}>
               <span className="tc-top">
                 <b>{t.name}</b>
@@ -171,6 +180,18 @@ function ModelsPage() {
 
       <Toggle on={settings.autoPickModel} onChange={(v) => setSettings({ autoPickModel: v, ...(v ? { model: suggested } : {}) })}
         title="Pick the best model for me" sub="Veylaro chooses based on your memory, and switches down if the machine gets busy." />
+
+      <div className="safe-note">
+        <Shield size={15} />
+        <div>
+          <b>{PRODUCTION_SYSTEMS.length} execution systems on every tier</b>
+          <p>
+            Contract, reproduction, scoped retrieval, blast-radius, counterexample,
+            execution, failure-memory, holdout, evidence-budget and claim-calibration
+            gates stay the same when you swap Lite, Med or Max.
+          </p>
+        </div>
+      </div>
 
       <div className="mrow">
         <label>How many helpers work at once</label>
@@ -249,7 +270,6 @@ function PermissionsPage() {
 }
 
 function PrivacyPage() {
-  const { settings, setSettings } = useStore();
   return (
     <>
       <div className="safe-note" style={{ marginTop: 0 }}>
@@ -262,13 +282,12 @@ function PrivacyPage() {
           </p>
         </div>
       </div>
-      <Toggle on={settings.shareImprovementData} onChange={(v) => setSettings({ shareImprovementData: v })}
-        title="Help make Laro better" sub="Sends counts only — how often a run finished, how often you undid one. No code, no prompts, no file names, ever." />
-      <Toggle on={settings.crashReports} onChange={(v) => setSettings({ crashReports: v })}
-        title="Send crash reports" sub="If the app breaks, send us what broke. Stack traces of our code only — scrubbed of your paths." />
-      <div className="hintline" style={{ marginTop: 14 }}>
-        Both of these are genuinely optional and genuinely off by default. Turn them on if you want to
-        help; nothing about the product changes if you don't.
+      <div className="mrow">
+        <label>Diagnostic uploads</label>
+        <div className="hintline">
+          Disabled in this build. There is no telemetry or crash-upload endpoint to turn on.
+          Private verified learning is configured separately and remains on this device.
+        </div>
       </div>
     </>
   );
@@ -358,31 +377,44 @@ function ReferralsPage() {
 
 function LearningPage() {
   const { settings, setSettings, liveModel } = useStore();
+  const [count, setCount] = useState(() => verifiedPrecedentCount());
+  const clear = () => {
+    if (!confirm("Delete every local verified-learning record? This cannot be undone.")) return;
+    clearVerifiedPrecedents();
+    setCount(0);
+  };
   return (
     <>
       <Toggle on={settings.overnight} onChange={(v) => setSettings({ overnight: v })}
-        title="Let Laro practise overnight" sub="While you sleep it reviews the work you accepted and gets a little better at your style. Off by default." />
+        title="Use private verified learning" sub="Save only locally observed passing checks, then retrieve relevant precedents on future work. Off by default." />
       <Toggle on={settings.overnightOnlyWhenPlugged} onChange={(v) => setSettings({ overnightOnlyWhenPlugged: v })}
-        title="Only when plugged in and idle" sub="Never touches your battery, never competes with you for the machine. Leave this on." />
+        title="Reserve adapter preparation for idle power" sub="Future adapter jobs may run only while plugged in and idle. Retrieval itself is lightweight." />
       <div className="mrow">
-        <label>How hard it practises</label>
+        <label>Local review budget</label>
         <div className="seg" style={{ width: "fit-content" }}>
           <button className={settings.overnightIntensity === "gentle" ? "on" : ""} onClick={() => setSettings({ overnightIntensity: "gentle" })}>Gentle</button>
           <button className={settings.overnightIntensity === "normal" ? "on" : ""} onClick={() => setSettings({ overnightIntensity: "normal" })}>Normal</button>
         </div>
-        <div className="hintline">Gentle is tiny nightly nudges — minutes, not hours. It's the right choice for almost everyone.</div>
+        <div className="hintline">This controls review and retrieval depth. It does not claim to rewrite model weights.</div>
       </div>
       <div className="safe-note">
         <Sparkle size={15} />
         <div>
-          <b>Your Laro stays yours</b>
+          <b>{count} verified local precedent{count === 1 ? "" : "s"}</b>
           <p>
-            What it learns is a small personal layer on top of the shared weights — it never leaves this
-            machine and it's never mixed into anyone else's copy. When we ship a smarter Laro, your layer
-            is re-applied on top: new brain, same you-shaped instincts.
-            {liveModel ? ` Currently sitting on ${liveModel.replace(/:latest$/, "")}.` : " Weights arrive with your first download."}
+            A record is created only from an observed passing terminal or verification result.
+            Records stay on this machine and are never mixed into another user's model.
+            {liveModel ? ` Current runtime: ${liveModel.replace(/:latest$/, "")}.` : " No trainable weights are installed yet."}
           </p>
         </div>
+      </div>
+      <div className="mfoot" style={{ justifyContent: "flex-start" }}>
+        <button className="btn ghost sm" disabled={count === 0} onClick={exportVerifiedPrecedents}>Export records</button>
+        <button className="btn ghost sm" disabled={count === 0} onClick={clear}>Delete records</button>
+      </div>
+      <div className="hintline">
+        Weight training is a separate release-gated process. Veylaro may prepare examples,
+        but it must not promote an adapter until an unseen holdout beats the installed model.
       </div>
     </>
   );
@@ -464,6 +496,48 @@ function AboutPage() {
 
 /* ---- the shell ---- */
 
+/* The systems that ship IN the app and run around every request. Training-only
+   systems (the overnight self-play pack, Twin Shadow Forge, the LoRA trainer)
+   are deliberately NOT listed — they run on the maker's machine to produce new
+   model versions, they don't ship to users. */
+const SHIPPED_SYSTEMS: { name: string; purpose: string }[] = [
+  ...PRODUCTION_SYSTEMS.map((s) => ({ name: s.name, purpose: s.purpose })),
+  { name: "Reproduction-first debugger", purpose: "A fix is only accepted when it flips a real failing test from red to green." },
+  { name: "Verified best-of-N", purpose: "Generates several candidates and keeps the one that actually passes the checks." },
+  { name: "Grounding gate (anti-hallucination)", purpose: "Blocks invented files, APIs and command output — say “I don't know” over guessing." },
+  { name: "Live web retrieval", purpose: "Fetches current results so answers aren't frozen at the model's training cutoff. Only your query leaves the machine." },
+  { name: "Apple-tier taste gate", purpose: "UI work is scored on real rendered evidence — contrast, overflow, responsiveness — not vibes." },
+  { name: "Private verified learning", purpose: "Consolidates checks that passed on your machine into retrievable precedents. Local, opt-in." },
+];
+
+function SystemsPage() {
+  return (
+    <>
+      <p className="sub" style={{ marginTop: 0, marginBottom: 16 }}>
+        The weights are only half of Laro. These systems run around every request — the
+        model proposes, and they decide what actually survives real execution. They ship on
+        every tier, which is how a small local model punches far above its size.
+      </p>
+      <div className="sys-list">
+        {SHIPPED_SYSTEMS.map((s) => (
+          <div className="sys-row" key={s.name}>
+            <span className="sys-dot" aria-hidden />
+            <div>
+              <div className="sys-name">{s.name}</div>
+              <div className="sys-purpose">{s.purpose}</div>
+            </div>
+            <span className="sys-on">on</span>
+          </div>
+        ))}
+      </div>
+      <p className="footnote" style={{ marginTop: 16 }}>
+        Every one of these runs locally. The overnight self-play and model-training systems
+        that build new Laro versions run on our side, not in your copy of the app.
+      </p>
+    </>
+  );
+}
+
 export function SettingsModal({ onClose, onSignIn, onUpgrade }: {
   onClose: () => void; onSignIn: () => void; onUpgrade: () => void;
 }) {
@@ -493,6 +567,7 @@ export function SettingsModal({ onClose, onSignIn, onUpgrade }: {
           <div className="set-body">
             {page === "general" && <GeneralPage />}
             {page === "models" && <ModelsPage />}
+            {page === "systems" && <SystemsPage />}
             {page === "permissions" && <PermissionsPage />}
             {page === "privacy" && <PrivacyPage />}
             {page === "account" && <AccountPage onSignIn={onSignIn} onUpgrade={onUpgrade} />}

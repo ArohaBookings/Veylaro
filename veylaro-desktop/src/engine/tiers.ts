@@ -23,6 +23,16 @@ export interface TierSystems {
   freshnessWeb: boolean; // live retrieval -> not limited to the weight cutoff
   designSystemKit: boolean; // guaranteed-good UI scaffold
   adversarialRatchet: boolean; // damages the app on purpose; tests must catch it
+  contractCompiler: boolean;
+  reproductionGate: boolean;
+  executionGate: boolean;
+  failureLattice: boolean;
+  holdoutSentinel: boolean;
+  blastRadiusGovernor: boolean;
+  counterexampleForge: boolean;
+  evidenceBudget: boolean;
+  claimCalibration: boolean;
+  verifiedPrecedentMemory: boolean;
   reasoningScaffold: string; // plan -> solve -> verify depth
   overdriveSamples: number; // verified best-of-N budget
   subAgentLanes: number;
@@ -62,10 +72,14 @@ export const SYSTEM_TIERS: TierProfile[] = [
     diskGB: 2.6,
     contextTokens: 16384,
     ollamaTag: "laro-lite",
-    runtime: { numPredict: 768, numCtx: 8192, keepAlive: "20m", temperature: 0.0 },
+    runtime: { numPredict: 768, numCtx: 8192, keepAlive: "3m", temperature: 0.0 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
       designSystemKit: true, adversarialRatchet: true,
+      contractCompiler: true, reproductionGate: true, executionGate: true,
+      failureLattice: true, holdoutSentinel: true, blastRadiusGovernor: true,
+      counterexampleForge: true, evidenceBudget: true, claimCalibration: true,
+      verifiedPrecedentMemory: true,
       reasoningScaffold: "plan → verify (1 pass)", overdriveSamples: 2, subAgentLanes: 1,
     },
   },
@@ -73,16 +87,20 @@ export const SYSTEM_TIERS: TierProfile[] = [
     id: "med",
     name: "Laro Med",
     tagline: "The measured one. Best balance of smart and fast.",
-    minRamGB: 8,
+    minRamGB: 12,
     recommendedRamGB: 16,
     paramsB: 12,
     diskGB: 7.6,
     contextTokens: 16384,
     ollamaTag: "laro-med",
-    runtime: { numPredict: 1536, numCtx: 16384, keepAlive: "30m", temperature: 0.0 },
+    runtime: { numPredict: 1536, numCtx: 16384, keepAlive: "3m", temperature: 0.0 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
       designSystemKit: true, adversarialRatchet: true,
+      contractCompiler: true, reproductionGate: true, executionGate: true,
+      failureLattice: true, holdoutSentinel: true, blastRadiusGovernor: true,
+      counterexampleForge: true, evidenceBudget: true, claimCalibration: true,
+      verifiedPrecedentMemory: true,
       reasoningScaffold: "plan → verify (2 pass)", overdriveSamples: 3, subAgentLanes: 2,
     },
   },
@@ -96,10 +114,14 @@ export const SYSTEM_TIERS: TierProfile[] = [
     diskGB: 14,
     contextTokens: 32768,
     ollamaTag: "laro-max",
-    runtime: { numPredict: 2048, numCtx: 32768, keepAlive: "30m", temperature: 0.0 },
+    runtime: { numPredict: 2048, numCtx: 32768, keepAlive: "3m", temperature: 0.0 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
       designSystemKit: true, adversarialRatchet: true,
+      contractCompiler: true, reproductionGate: true, executionGate: true,
+      failureLattice: true, holdoutSentinel: true, blastRadiusGovernor: true,
+      counterexampleForge: true, evidenceBudget: true, claimCalibration: true,
+      verifiedPrecedentMemory: true,
       reasoningScaffold: "plan → branch → verify", overdriveSamples: 5, subAgentLanes: 3,
     },
   },

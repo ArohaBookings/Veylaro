@@ -25,7 +25,7 @@ const { execSync } = require("child_process");
 const OLLAMA = process.env.VEYLARO_HOST || "http://127.0.0.1:11434";
 const TIERS = [
   { id: "lite", name: "Laro Lite", tag: "laro-lite", minRam: 4, params: "4B" },
-  { id: "med", name: "Laro Med", tag: "laro-med", minRam: 8, params: "12B" },
+  { id: "med", name: "Laro Med", tag: "laro-med", minRam: 12, params: "12B" },
   { id: "max", name: "Laro Max", tag: "laro-max", minRam: 24, params: "24B" },
 ];
 

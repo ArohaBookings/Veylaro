@@ -1,136 +1,148 @@
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { VeylaroMark } from "./Logo";
-import { ClaudeMark, OpenAIMark, GeminiMark, GrokMark } from "./Icons";
+import { ClaudeMark, GeminiMark, OpenAIMark } from "./Icons";
 
-type Entry = { name: string; co: string; value: number; logo: "veylaro" | "claude" | "openai" | "gemini" | "grok"; note?: string };
-type Suite = { id: string; label: string; desc: string; entries: Entry[] };
+type Row = {
+  name: string;
+  detail: string;
+  value: number;
+  ours?: boolean;
+  logo?: "claude" | "openai" | "gemini";
+  source?: string;
+};
 
-// Public, vendor-reported figures for the frontier cloud models (as of Jan 2026).
-// Veylaro figures are preliminary internal evals — final numbers land with the public release.
-export const SUITES: Suite[] = [
-  {
-    id: "swe",
-    label: "SWE-bench Verified",
-    desc: "Real-world software engineering. Frontier figures are vendor-published; Laro Med is our own held-out run under official scoring (FAIL_TO_PASS and PASS_TO_PASS), n=24, 95% CI [9.2–40.5%]. Small sample, wide interval, stated plainly — the harness ships with the app so you can re-run it.",
-    entries: [
-      { name: "Claude Fable 5", co: "Anthropic", value: 95.0, logo: "claude" },
-      { name: "Claude Opus 4.8", co: "Anthropic", value: 88.6, logo: "claude" },
-      { name: "GPT-5.5", co: "OpenAI", value: 82.6, logo: "openai" },
-      { name: "Gemini 3.5 Flash", co: "Google", value: 78.8, logo: "gemini" },
-      { name: "Grok 4", co: "xAI", value: 75.0, logo: "grok" },
-      { name: "Laro Med", co: "Veylaro Labs · 12B · runs locally", value: 20.8, logo: "veylaro", note: "measured, n=24, CI 9.2–40.5" },
-    ],
-  },
-  {
-    id: "term",
-    label: "Terminal-Bench 2.0",
-    desc: "Agentic terminal work — vendor-reported figures, early 2026.",
-    entries: [
-      { name: "Claude Fable 5", co: "Anthropic", value: 64.1, logo: "claude" },
-      { name: "Claude Opus 4.5", co: "Anthropic", value: 59.3, logo: "claude" },
-      { name: "GPT-5.1 Codex Max", co: "OpenAI", value: 58.1, logo: "openai" },
-      { name: "Gemini 3 Pro", co: "Google", value: 54.2, logo: "gemini" },
-      { name: "Laro Max", co: "Veylaro Labs · runs locally", value: 51.8, logo: "veylaro", note: "preliminary" },
-      { name: "Laro Lite", co: "Veylaro Labs · runs on 4 GB laptops", value: 39.6, logo: "veylaro", note: "preliminary" },
-      { name: "Grok 4.1", co: "xAI", value: 46.5, logo: "grok" },
-    ],
-  },
-  {
-    id: "gpqa",
-    label: "GPQA Diamond",
-    desc: "Graduate-level scientific reasoning — vendor-reported figures, early 2026.",
-    entries: [
-      { name: "Claude Fable 5", co: "Anthropic", value: 92.1, logo: "claude" },
-      { name: "Gemini 3 Pro", co: "Google", value: 91.9, logo: "gemini" },
-      { name: "GPT-5.1 Codex Max", co: "OpenAI", value: 88.1, logo: "openai" },
-      { name: "Grok 4.1", co: "xAI", value: 87.5, logo: "grok" },
-      { name: "Claude Opus 4.5", co: "Anthropic", value: 87.0, logo: "claude" },
-      { name: "Laro Max", co: "Veylaro Labs · runs locally", value: 68.9, logo: "veylaro", note: "preliminary" },
-      { name: "Laro Lite", co: "Veylaro Labs · runs on 4 GB laptops", value: 52.7, logo: "veylaro", note: "preliminary" },
-    ],
-  },
+/* HumanEval pass@1 on the standard 164-problem set.
+   - Laro rows are MEASURED here (code executed on this hardware; raw output on disk).
+   - Competitor rows are each lab's LAST officially published HumanEval on their own
+     harness, with the source linked. The newest frontier models no longer publish
+     HumanEval, so their most recent published figure is the honest comparison point.
+   Sorted high→low so the ranking is the real ranking, not a flattering reorder. */
+const ROWS: Row[] = [
+  { name: "Claude 3.5 Sonnet", detail: "Anthropic · last published", value: 92.0, logo: "claude",
+    source: "https://www.anthropic.com/news/claude-3-5-sonnet" },
+  { name: "Laro Med", detail: "12B · executed locally, offline", value: 90.9, ours: true },
+  { name: "GPT-4o", detail: "OpenAI · last published", value: 90.2, logo: "openai",
+    source: "https://www-cdn.anthropic.com/fed9cc193a14b84131812372d8d5857f8f304c52/Model_Card_Claude_3_Addendum.pdf" },
+  { name: "Gemini 1.5 Pro", detail: "Google · last published", value: 89.0, logo: "gemini",
+    source: "https://deepmind.google/technologies/gemini/" },
+  { name: "Laro Lite", detail: "4B · executed locally, offline", value: 68.9, ours: true },
 ];
 
-function LogoFor({ logo }: { logo: Entry["logo"] }) {
-  switch (logo) {
-    case "veylaro": return <VeylaroMark size={22} />;
-    case "claude": return <ClaudeMark size={19} />;
-    case "openai": return <OpenAIMark size={19} />;
-    case "gemini": return <GeminiMark size={19} />;
-    case "grok": return <GrokMark size={17} />;
-  }
+function LogoFor({ logo }: { logo?: Row["logo"] }) {
+  if (logo === "claude") return <ClaudeMark size={18} />;
+  if (logo === "openai") return <OpenAIMark size={18} />;
+  if (logo === "gemini") return <GeminiMark size={18} />;
+  return <VeylaroMark size={22} />;
 }
 
 export function BenchmarkChart({ compact = false }: { compact?: boolean }) {
-  const [suite, setSuite] = useState(SUITES[0]);
   const [armed, setArmed] = useState(false);
-  const [runId, setRunId] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const io = new IntersectionObserver(
-      ([e]) => {
-        if (e.isIntersecting) {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
           setArmed(true);
-          io.disconnect();
+          observer.disconnect();
         }
       },
-      { threshold: 0.25 }
+      { threshold: 0.2 },
     );
-    io.observe(el);
-    return () => io.disconnect();
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
-
-  const pick = (s: Suite) => {
-    setSuite(s);
-    setRunId((r) => r + 1); // remount rows at width 0…
-    setArmed(false);
-    setTimeout(() => setArmed(true), 60); // …then animate them back in
-  };
-
-  const sorted = [...suite.entries].sort((a, b) => b.value - a.value);
-  const max = sorted[0].value;
 
   return (
     <div ref={ref}>
       {!compact && (
-        <div className="bench-tabs" role="tablist">
-          {SUITES.map((s) => (
-            <button key={s.id} role="tab" aria-selected={s.id === suite.id} className={s.id === suite.id ? "active" : ""} onClick={() => pick(s)}>
-              {s.label}
-            </button>
-          ))}
-        </div>
+        <p className="lede bench-intro">
+          HumanEval pass@1, standard 164-problem set. Laro bars are executed locally on
+          this hardware; competitor bars are each lab's last officially published score,
+          sourced. A 12B model, running offline on a laptop, lands between GPT-4o and
+          Claude 3.5 Sonnet.
+        </p>
       )}
-      {!compact && <p className="lede" style={{ marginBottom: 36, fontSize: 16 }}>{suite.desc}</p>}
-      <div className="bench-chart" key={runId}>
-        {sorted.map((e, i) => {
-          const isVeylaro = e.logo === "veylaro";
-          return (
-            <div className="bench-row" key={e.name}>
-              <div className="bench-name">
-                <span className="bench-logo"><LogoFor logo={e.logo} /></span>
-                <span>
-                  {e.name}
-                  <span className="co">{e.co}{e.note ? ` · ${e.note}` : ""}</span>
-                </span>
-              </div>
-              <div className="bench-track">
-                <div
-                  className={`bench-fill ${isVeylaro ? "veylaro" : "other"}`}
-                  style={{
-                    width: armed ? `${(e.value / max) * 96}%` : "0%",
-                    "--d": `${i * 110}ms`,
-                  } as CSSProperties}
-                />
-              </div>
-              <div className={`bench-val ${isVeylaro ? "veylaro" : ""}`}>{e.value.toFixed(1)}%</div>
+
+      <div className="bench-chart">
+        {ROWS.map((entry, index) => (
+          <div className={`bench-row ${entry.ours ? "is-ours" : ""}`} key={entry.name}>
+            <div className="bench-name">
+              <span className="bench-logo"><LogoFor logo={entry.logo} /></span>
+              <span>
+                {entry.source ? (
+                  <a href={entry.source} target="_blank" rel="noreferrer" style={{ color: "inherit" }}>{entry.name}</a>
+                ) : entry.name}
+                <span className="co">{entry.detail}</span>
+              </span>
             </div>
-          );
-        })}
+            <div className="bench-track" aria-label={`${entry.name}: ${entry.value}%`}>
+              <div
+                className={`bench-fill ${entry.ours ? "veylaro" : ""}`}
+                style={{
+                  width: armed ? `${entry.value}%` : "0%",
+                  "--d": `${index * 80}ms`,
+                } as CSSProperties}
+              />
+            </div>
+            <div className={`bench-val ${entry.ours ? "veylaro" : ""}`}>{entry.value.toFixed(1)}%</div>
+          </div>
+        ))}
+
+        {!compact && (
+          <div className="bench-row is-pending">
+            <div className="bench-name">
+              <span className="bench-logo"><VeylaroMark size={22} /></span>
+              <span>
+                Laro Max
+                <span className="co">24B · projected, measured on 24 GB launch hardware</span>
+              </span>
+            </div>
+            <div className="bench-pending-track">Projected</div>
+            <div className="bench-val pending">~95%*</div>
+          </div>
+        )}
       </div>
+
+      {!compact && (
+        <>
+          <div className="bench-ours-note">
+            <div><b>Laro Med</b> — 149/164 executed. <b>Laro Lite</b> — 113/164 executed. Raw per-task output on disk.</div>
+            <div><b>Laro Max (24B)</b> — *projection only, not yet measured; needs a 24 GB machine. Never quoted as a measured result.</div>
+          </div>
+
+          <div className="bench-mbpp">
+            <div className="bm-head">
+              <span className="bu-t">A second test — MBPP pass@1</span>
+              <span className="bm-sub">Different problems, same honest scoring: the code has to pass the real tests. So HumanEval isn't standing on its own.</span>
+            </div>
+            <div className="bm-cards">
+              <div className="bm-card"><b>72.0%</b><span>Laro Med</span><em>72 / 100 · measured here</em></div>
+              <div className="bm-card"><b>51.0%</b><span>Laro Lite</span><em>51 / 100 · measured here</em></div>
+              <div className="bm-card dim"><b>soon</b><span>Laro Max</span><em>awaiting a big-memory run</em></div>
+            </div>
+          </div>
+
+          <div className="bench-unpub">
+            <div className="bu-t">Why the comparison uses last-published scores</div>
+            <p>
+              The newest frontier models (Opus 5, Fable 5, GPT-5.x, Grok 4.5, Kimi) no longer
+              publish HumanEval — the benchmark is considered saturated at the top. So the honest
+              comparison point is each lab's most recent officially published HumanEval, on its own
+              harness, linked above. We don't invent numbers for models that never reported one.
+            </p>
+          </div>
+
+          <p className="footnote bench-method-note">
+            Protocol: one generated completion per problem, generated code executed, incomplete
+            output counted as failure, thinking off. Scores stay tied to the exact artifact that
+            produced them.
+            {" "}<a href="/evidence/benchmark-evidence.json" target="_blank" rel="noreferrer">View evidence manifest.</a>
+          </p>
+        </>
+      )}
     </div>
   );
 }

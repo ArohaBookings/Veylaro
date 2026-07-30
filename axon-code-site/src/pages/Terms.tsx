@@ -1,10 +1,13 @@
 import { Reveal } from "../components/FX";
+import { LegalShell } from "../components/LegalNav";
+
+const SECTIONS = ["Agreement", "Your license to Veylaro", "What's yours", "What's ours", "Acceptable use", "Plans, billing & cancellation", "Updates", "Privacy", "AI output disclaimer", "Warranty disclaimer", "Limitation of liability", "Termination", "Changes to these Terms", "General"];
 
 export function Terms() {
   return (
     <main>
       <section className="page-hero" style={{ textAlign: "left", paddingBottom: 20 }}>
-        <div className="container legal">
+        <div className="container wide">
           <Reveal>
             <span className="eyebrow"><span className="dot" />Legal</span>
             <h1 className="h-xl">Terms of Service</h1>
@@ -14,7 +17,8 @@ export function Terms() {
       </section>
 
       <section className="section tight" style={{ paddingTop: 0 }}>
-        <div className="container legal">
+        <div className="container wide">
+         <LegalShell prefix="t" sections={SECTIONS}>
           <Reveal>
             <div className="callout">
               <p>
@@ -152,10 +156,11 @@ export function Terms() {
               These Terms are the entire agreement between us regarding the Services. If a provision is held
               unenforceable, the rest remain in effect. Failure to enforce is not waiver. You may not assign
               these Terms without our consent; we may assign them in connection with a merger or asset sale
-              provided the privacy commitments in §8 bind the successor. Questions:
-              <strong> legal@veylaro.ai</strong>.
+              provided the privacy commitments in §8 bind the successor. A contact channel for questions about
+              these Terms is published here at public launch.
             </p>
           </Reveal>
+         </LegalShell>
         </div>
       </section>
     </main>

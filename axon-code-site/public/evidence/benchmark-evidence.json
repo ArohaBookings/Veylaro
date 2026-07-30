@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-07-29T09:53:48.583677+00:00",
+  "status": "pre-release evidence",
+  "humaneval": {
+    "protocol": "HumanEval 164 tasks; one generated completion per task; generated code executed; incomplete output counted as failure",
+    "laro_lite_4b": {
+      "result": "113/164",
+      "score_pct": 68.9,
+      "artifact_sha256": "0c7dfa3d258db31e097188720ee10a1cce1f82d7bc1f2baa93eb57acb3379dea"
+    },
+    "laro_med_12b": {
+      "result": "149/164",
+      "score_pct": 90.9,
+      "artifact_sha256": "423c7df9e91f6cb4ccdffcec0ea727948b2fdf5de3d4aedb194396df583c890f"
+    },
+    "laro_max_24b": {
+      "status": "not run"
+    }
+  },
+  "swe_bench": {
+    "laro_lite": "No tier score. One preselected development pilot task resolved by the upstream evaluator; 1/1 is mechanism evidence only.",
+    "laro_med": "12.5% clean development subset; 20.83% oracle-assisted development subset. Neither is leaderboard-comparable.",
+    "laro_max": "Not run.",
+    "lite_pilot_report_sha256": "2ebbcc2889dc004393f68a0c56d3a4de6f9facaac9b3f4fa3e79f9dc9eb6851b"
+  },
+  "weight_training": {
+    "adapter_win_proven": false,
+    "note": "No trained adapter beat the incumbent. No adapter result is marketed as an improvement."
+  },
+  "runtime_caveat": "The currently installed 8B preview runtime is a separate artifact and does not inherit the 4B or 12B HumanEval scores."
+}

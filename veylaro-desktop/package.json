@@ -3,7 +3,7 @@
   "productName": "Veylaro Code",
   "private": true,
   "version": "1.0.0",
-  "description": "Veylaro Code \u2014 the most powerful local AI coding agent. Laro Lite & Laro Max, running entirely on your machine.",
+  "description": "Veylaro Code \u2014 a local AI coding environment with Laro Lite, Med and Max.",
   "author": "Veylaro Labs",
   "type": "module",
   "main": "electron/main.cjs",
@@ -50,6 +50,7 @@
       "output": "release",
       "buildResources": "build"
     },
+    "afterPack": "build/afterPack.cjs",
     "mac": {
       "category": "public.app-category.developer-tools",
       "identity": null,

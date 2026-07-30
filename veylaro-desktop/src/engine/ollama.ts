@@ -29,6 +29,8 @@ function optsFor(sku: ModelId) {
   return { temperature: rt.temperature, num_predict: rt.numPredict, num_ctx: rt.numCtx, top_p: 0.9 };
 }
 
+type RuntimeOverrides = Partial<ReturnType<typeof optsFor>>;
+
 /** Preferred shipped model names per tier, best first. The tier's own
     ollamaTag wins; the legacy names keep older installs working. */
 export function modelPreference(sku: ModelId): string[] {
@@ -62,17 +64,35 @@ export async function detectLiveModel(url: string): Promise<string | null> {
   }
 }
 
-/** Pre-load the weights so the first user message streams instantly. */
+/** Pre-load the weights so the first user message streams instantly.
+    keep_alive is short (10m) on purpose: it covers the gap between opening the
+    app and the first message, then releases the RAM if you never send one — no
+    30-minute memory hang sitting there doing nothing. */
 export async function warmup(url: string, model: string): Promise<void> {
   try {
     await fetch(`${url.replace(/\/$/, "")}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt: "", stream: false, keep_alive: "30m", options: { num_predict: 1 } }),
+      body: JSON.stringify({ model, prompt: "", stream: false, keep_alive: "10m", options: { num_predict: 1 } }),
       signal: AbortSignal.timeout(120000),
     });
   } catch {
     /* warmup is best-effort */
+  }
+}
+
+/** Release the weights from memory now. Called when you hit Stop, so the RAM
+    frees the moment you're done rather than lingering for the keep-alive window. */
+export async function unloadModel(url: string, model: string): Promise<void> {
+  try {
+    await fetch(`${url.replace(/\/$/, "")}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, prompt: "", stream: false, keep_alive: 0 }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    /* best effort — if the engine's already gone, nothing to unload */
   }
 }
 
@@ -89,7 +109,8 @@ export async function* ollamaChat(
   messages: ChatMsg[],
   sku: ModelId = "med",
   reasoning = false,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  overrides: RuntimeOverrides = {}
 ): AsyncGenerator<StreamChunk> {
   const res = await fetch(`${url.replace(/\/$/, "")}/api/chat`, {
     method: "POST",
@@ -100,7 +121,7 @@ export async function* ollamaChat(
       stream: true,
       think: reasoning,
       keep_alive: runtimeFor(sku).keepAlive,
-      options: optsFor(sku),
+      options: { ...optsFor(sku), ...overrides },
     }),
     signal,
   });
@@ -130,4 +151,4 @@ export async function* ollamaChat(
   }
 }
 
-export const LARO_SYSTEM_PROMPT = `You are Laro, the engine inside Veylaro Code — a local AI coding agent that runs entirely on the user's machine. Private by physics. Be sharp, warm and honest. Narrate what you do like a great pair-programmer: one plain-English line, then precise dev detail. Never invent file contents, command output, test results or benchmarks. When a task is ambiguous, ask at most four crisp questions, one at a time, then act. Lead with the answer; be fast.`;
+export const LARO_SYSTEM_PROMPT = `You are Laro, the engine inside Veylaro Code — a local AI coding agent. Inference and project work run on the user's machine; optional search and account services are disclosed separately. Be sharp, warm and honest. Narrate what you do like a great pair-programmer: one plain-English line, then precise dev detail. Never invent file contents, command output, test results or benchmarks. When a task is ambiguous, ask at most four crisp questions, one at a time, then act. Lead with the answer; be fast.`;

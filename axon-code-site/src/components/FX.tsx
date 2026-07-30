@@ -39,7 +39,15 @@ export function Reveal({
       { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
     );
     io.observe(el);
-    return () => io.disconnect();
+    // Failsafe: content must never be trapped invisible. If the observer hasn't
+    // fired within 1.2s (deep-link straight to a section, an instant in-page jump,
+    // a browser that restored scroll past this element), reveal it anyway. Losing
+    // an entrance animation is fine; losing the content is not.
+    const failsafe = setTimeout(() => el.classList.add("in"), 1200);
+    return () => {
+      io.disconnect();
+      clearTimeout(failsafe);
+    };
   }, []);
   const T = Tag as any;
   return (

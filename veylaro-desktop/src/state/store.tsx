@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import {
-  Account, AgentEvent, Attachment, BgTask, BrowseStep, Checkpoint, FileStat, FREE_WEEKLY_LIMIT, Msg,
+  Account, AgentEvent, Attachment, BgTask, BrowseStep, Checkpoint, FileStat, FREE_WEEKLY_LIMIT, Msg, MODELS,
   LAUNCH_FREE_MONTH_MS, OFFLINE_GRACE_MS, PAST_DUE_GRACE_MS, PermMode, Plan, Question, REFERRAL_MAX,
   Session, Settings, SideMsg, TermLine, Usage, VaultItem,
 } from "../types";
+import { refreshRemoteConfig, remoteConfig, RemoteConfig } from "../engine/remoteConfig";
 
 /* ============ billing state machine ============ */
 
@@ -80,10 +81,15 @@ export function deriveBilling(account: Account | null, now: number, online: bool
   return { plan: "free", label: "Checkout incomplete", banner: { tone: "amber", title: "Finish checkout to activate", body: "Your subscription hasn't completed. Finish payment to switch on unlimited.", cta: "finish" } };
 }
 import { buildQuestions, buildRun, needsClarification, sideChatReply, simulateTerminal, TimedEvent } from "../engine/demo";
-import { detectLiveModel, ollamaChat, warmup } from "../engine/ollama";
-import { GROUNDING_NOTE, LARO_CHARTER, LARO_DEV_CHARTER, LARO_SIDE_CHARTER } from "../engine/charter";
+import { detectLiveModel, ollamaChat, warmup, unloadModel, ChatMsg } from "../engine/ollama";
+import {
+  FILE_PROTOCOL_PROMPT, StreamParser, salvageFences, resolveInScope, diffCounts,
+} from "../engine/agentLoop";
+import { GROUNDING_NOTE, LARO_CHARTER, LARO_SIDE_CHARTER, laroContext } from "../engine/charter";
 import { resultsToContext, webSearch } from "../engine/search";
-import { subAgentLanes } from "../engine/tiers";
+import { recommendModel, subAgentLanes } from "../engine/tiers";
+import { EXECUTION_LATTICE_PROMPT } from "../engine/executionLattice";
+import { precedentsAsPrompt, recordVerifiedPrecedent } from "../engine/localLearning";
 
 /* ============ helpers ============ */
 
@@ -116,7 +122,7 @@ interface Persisted {
 }
 
 const DEFAULT_SETTINGS: Settings = {
-  model: "max",
+  model: "lite",
   permMode: "edits",
   lang: "both",
   personality: true,
@@ -142,6 +148,12 @@ const DEFAULT_SETTINGS: Settings = {
   overnightIntensity: "gentle",
   terminalShell: "",
 };
+
+function isFastInteraction(text: string): boolean {
+  const clean = text.trim();
+  if (clean.length > 80) return false;
+  return /^(?:(?:hi|hello|hey|yo)(?:\s+(?:there|laro|veylaro|axon(?:\s+ai)?))?|thanks|thank you|good (?:morning|afternoon|evening)|who are you|what are you)[!?.\s]*$/i.test(clean);
+}
 
 function readUsageMirror(): Usage | null {
   try {
@@ -224,6 +236,7 @@ interface Store extends Persisted {
   selectSession(id: string): void;
   deleteSession(id: string): void;
   send(text: string, attachments: Attachment[]): void;
+  stopRun(): void; // Stop button — aborts the live run cleanly, mid-stream
   resolveGate(approve: boolean): void;
   resolvePlan(approve: boolean): void;
   answerQuestions(answers: Record<string, string>): void;
@@ -252,6 +265,7 @@ export const useStore = () => {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [st, setSt] = useState<Persisted>(load);
+  const [remoteCfg, setRemoteCfg] = useState<RemoteConfig>(remoteConfig());
   const [running, setRunning] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [restoredTo, setRestoredTo] = useState<string | null>(null);
@@ -263,6 +277,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [bgTasks, setBgTasks] = useState<BgTask[]>([]);
   const [lastBrowse, setLastBrowse] = useState<Store["lastBrowse"]>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>();
+  // live run cancellation — the Stop button aborts this, halting the stream
+  // and the agent loop cleanly wherever it is.
+  const abortRef = useRef<AbortController | null>(null);
 
   const pushBg = (label: string, detail?: string): string => {
     const id = uid();
@@ -276,6 +293,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (window.veylaro?.sysinfo) window.veylaro.sysinfo().then((s) => setRamGB(s.ramGB)).catch(() => {});
     else if ((navigator as any).deviceMemory) setRamGB((navigator as any).deviceMemory);
   }, []);
+
+  // Poll the website's live switches (downloads / unlimited-for-all / launch
+  // month). First read on mount, then every 5 min, so an admin flip reaches
+  // running clients without a restart.
+  useEffect(() => {
+    let alive = true;
+    const tick = () => refreshRemoteConfig().then((c) => alive && setRemoteCfg(c)).catch(() => {});
+    tick();
+    const iv = setInterval(tick, 5 * 60 * 1000);
+    return () => { alive = false; clearInterval(iv); };
+  }, []);
+
+  useEffect(() => {
+    if (!st.settings.autoPickModel) return;
+    const recommended = recommendModel(ramGB);
+    if (st.settings.model === recommended) return;
+    setSt((p) => ({
+      ...p,
+      settings: { ...p.settings, model: recommended },
+    }));
+  }, [ramGB, st.settings.autoPickModel, st.settings.model]);
 
   // self-watch: Laro notices when its own UI glitches and logs it honestly
   useEffect(() => {
@@ -378,8 +416,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // (limits re-apply) until Stripe confirms payment again.
   const billingStatus = deriveBilling(st.account, Date.now(), navigator.onLine);
   const effectivePlan: Plan = billingStatus.plan;
-  const remaining = effectivePlan === "free" ? Math.max(0, FREE_WEEKLY_LIMIT - st.usage.used) : Infinity;
-  const locked = effectivePlan === "free" && remaining <= 0;
+  // Global admin kill-switch: when Leo flips "Unlimited for everyone" on the
+  // website, every client uncaps on its next config poll — free or paid.
+  const uncapped = remoteCfg.unlimited_for_all || effectivePlan !== "free";
+  const remaining = uncapped ? Infinity : Math.max(0, FREE_WEEKLY_LIMIT - st.usage.used);
+  const locked = !uncapped && remaining <= 0;
 
   /* ---- session mutation helpers ---- */
 
@@ -398,6 +439,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const u = new SpeechSynthesisUtterance(`${ev.title}. ${ev.bullets[0] || ""}`);
       u.rate = 1.05;
       window.speechSynthesis.speak(u);
+    }
+    if (
+      ev.kind === "verify" &&
+      ev.ok &&
+      st.settings.overnight &&
+      st.settings.engine === "ollama" &&
+      window.veylaro?.isDesktop
+    ) {
+      const session = st.sessions.find((item) => item.id === sessionId);
+      const prompt = [...(session?.msgs || [])].reverse().find((msg) => msg.role === "user")?.text;
+      if (prompt) {
+        recordVerifiedPrecedent({
+          prompt,
+          scopeLabel: session?.scope.split(/[\\/]/).pop() || "project",
+          check: ev.target,
+          evidence: ev.detail,
+          model: st.settings.ollamaModel,
+        });
+      }
     }
     return mutSession(sessionId, (s) => {
       // const snapshot keeps TypeScript narrowing intact after the ms stamp
@@ -607,11 +667,62 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const { settings } = st;
 
       if (settings.engine === "ollama") {
-        // live model path — real local inference, streamed token by token
+        // live model path — real local inference, real file writes.
         setRunning(true);
-        (async () => {
-          let acc = "";
+        const controller = new AbortController();
+        abortRef.current = controller;
+        const signal = controller.signal;
+        const sess = active;
+        const modelName = MODELS[settings.model].name;
+        const scopeName = sess.scope.split(/[\\/]/).pop() || "the project";
+        const canWrite = !!window.veylaro?.writeFile;
+
+        // write one file through the guarded bridge; emit a compact row, not code
+        const writeOne = async (rel: string, content: string): Promise<boolean> => {
+          if (!rel || !canWrite) return false;
+          const abs = resolveInScope(sess.scope, sess.scopeKind, rel);
+          let old: string | null = null;
           try {
+            const r = await window.veylaro!.readFile?.(abs);
+            if (r?.ok) old = r.content ?? null;
+          } catch { /* new file */ }
+          const res = await window.veylaro!.writeFile!(abs, content, {
+            scope: sess.scope,
+            scopeKind: sess.scopeKind,
+            fullDisk: settings.fullDiskAccess,
+            confirmed: settings.permMode !== "ask",
+          });
+          if (!res.ok) {
+            appendEvent(sess.id, agentMsg.id, {
+              kind: "say",
+              plain: `⛔ I couldn't write ${rel} — ${res.error || "the guard blocked it (it's outside this project's scope)"}.`,
+              dev: "guarded write refused",
+            });
+            return false;
+          }
+          const { plus, minus, op } = diffCounts(old, content);
+          appendEvent(sess.id, agentMsg.id, {
+            kind: "file",
+            path: rel,
+            op,
+            plus,
+            minus,
+            snippet: { del: [], add: content.split("\n").slice(0, 3) },
+          });
+          return true;
+        };
+
+        // run one shell command through the guard, show the result compactly
+        const runOne = async (cmd: string): Promise<void> => {
+          if (!window.veylaro?.exec) return;
+          const r = await window.veylaro.exec(cmd, sess.scope, { confirmed: settings.permMode === "bypass" });
+          appendEvent(sess.id, agentMsg.id, { kind: "cmd", cmd, out: (r.out || "").slice(0, 1200), ok: !!r.ok && !r.blocked });
+        };
+
+        (async () => {
+          const fastPath = isFastInteraction(text) && attachments.length === 0;
+          try {
+            // optional live web grounding (query only ever leaves the machine)
             const wantsWeb =
               settings.internet &&
               navigator.onLine &&
@@ -625,51 +736,132 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               setSearching(null);
               doneBg(bg, !!results, results ? `${results.length} sources read locally` : "no live results — continuing offline");
               if (results && results.length) {
-                appendEvent(active.id, agentMsg.id, { kind: "web", query: q, results });
+                appendEvent(sess.id, agentMsg.id, { kind: "web", query: q, results });
                 searchCtx = resultsToContext(q, results);
               }
             }
-            const isOwner = (st.account?.email || "").toLowerCase() === "leoanthonybons@gmail.com";
-            const sys: { role: "system"; content: string }[] = [
-              { role: "system", content: isOwner ? LARO_DEV_CHARTER : LARO_CHARTER },
+
+            // ---- casual chat: one short reply, no build machinery ----
+            if (fastPath) {
+              const sys: ChatMsg[] = [{
+                role: "system",
+                content: laroContext(ramGB) + "\n\nYou are Laro, built by Veylaro Labs — never say another company made you, and never claim a knowledge cutoff. This is casual conversation: reply naturally in a sentence or two, with real personality and opinions. No plan, no preamble, no technical footer.",
+              }];
+              if (searchCtx) sys.push({ role: "system", content: `${GROUNDING_NOTE}\n\n${searchCtx}` });
+              setStreamText("");
+              let acc = "";
+              for await (const part of ollamaChat(settings.ollamaUrl, settings.ollamaModel, [...sys, { role: "user", content: text }], settings.model, false, signal, { num_predict: 220, num_ctx: 2048, temperature: 0.4 })) {
+                if (part.type === "text") { acc += part.chunk; setStreamText(acc); }
+              }
+              appendEvent(sess.id, agentMsg.id, {
+                kind: "say",
+                plain: acc.trim() || "…the model returned an empty reply. Give me one more go — the weights may still be warming up.",
+                dev: `${modelName} · on your machine`,
+              });
+              finishRun();
+              return;
+            }
+
+            // ---- build / agent path: keeps going until the job is done ----
+            const sys: ChatMsg[] = [
+              { role: "system", content: laroContext(ramGB) + "\n\n" + LARO_CHARTER },
+              { role: "system", content: EXECUTION_LATTICE_PROMPT },
             ];
+            if (canWrite) {
+              sys.push({ role: "system", content: `${FILE_PROTOCOL_PROMPT}\n\nProject folder for this session: ${sess.scope}\nEvery path you write is relative to that folder.` });
+            }
+            if (settings.reasoning) {
+              sys.push({ role: "system", content: "Expose only a concise work summary as you go: what you're doing and what you find. Do not reveal private chain-of-thought." });
+            }
             if (searchCtx) sys.push({ role: "system", content: `${GROUNDING_NOTE}\n\n${searchCtx}` });
-            setStreamText("");
-            let think = "";
-            for await (const part of ollamaChat(
-              settings.ollamaUrl,
-              settings.ollamaModel,
-              [...sys, { role: "user", content: `[session scope: ${active.scope}]\n${text}` }],
-              settings.model,
-              settings.reasoning
-            )) {
-              if (part.type === "think") {
-                think += part.chunk;
-                setStreamThink(think);
-              } else {
-                acc += part.chunk;
-                setStreamText(acc);
+            if (settings.overnight) {
+              const precedents = precedentsAsPrompt(text);
+              if (precedents) sys.push({ role: "system", content: precedents });
+            }
+
+            const convo: ChatMsg[] = [...sys, { role: "user", content: `[project folder: ${sess.scope}]\n${text}` }];
+            const maxSteps = settings.model === "lite" ? 4 : settings.model === "max" ? 8 : 6;
+            const narrationAll: string[] = [];
+            let filesWritten = 0;
+            let done = false;
+            let step = 0;
+
+            while (!done && step < maxSteps && !signal.aborted) {
+              step++;
+              const parser = new StreamParser();
+              let raw = "";
+              let wroteThisStep = 0;
+              let ranThisStep = 0;
+              setStreamText(step === 1 ? "Reading the task…" : "Continuing…");
+
+              for await (const part of ollamaChat(settings.ollamaUrl, settings.ollamaModel, convo, settings.model, false, signal)) {
+                if (part.type !== "text") continue;
+                raw += part.chunk;
+                for (const ev of parser.push(part.chunk)) {
+                  if (ev.t === "file") { if (await writeOne(ev.path, ev.content)) { wroteThisStep++; filesWritten++; } }
+                  else if (ev.t === "run") { await runOne(ev.cmd); ranThisStep++; }
+                  else if (ev.t === "done") { done = true; }
+                }
+                const w = parser.writing;
+                const lastLine = parser.liveNarration.split("\n").filter(Boolean).slice(-1)[0];
+                setStreamText(w ? `✍️ Writing ${w}…` : (lastLine || "Working…"));
+              }
+              // close out any trailing block, then salvage stray fenced code
+              for (const ev of parser.flush()) {
+                if (ev.t === "file") { if (await writeOne(ev.path, ev.content)) { wroteThisStep++; filesWritten++; } }
+              }
+              const salv = canWrite ? salvageFences(parser.liveNarration) : { files: [], rest: parser.liveNarration };
+              for (const f of salv.files) { if (await writeOne(f.path, f.content)) { wroteThisStep++; filesWritten++; } }
+              const narration = (salv.files.length ? salv.rest : parser.liveNarration).trim();
+              if (narration) narrationAll.push(narration);
+
+              convo.push({ role: "assistant", content: raw });
+              if (signal.aborted || done) break;
+              // a pure answer/question with no file ops: nothing to build — stop here
+              if (wroteThisStep === 0 && ranThisStep === 0) break;
+              if (step < maxSteps) {
+                convo.push({ role: "user", content: "Keep going. If every file is written and the whole task is genuinely finished, reply with @@DONE on its own line. Otherwise write the next file now — do not stop early and do not ask me whether to continue." });
               }
             }
-            if (think.trim()) appendEvent(active.id, agentMsg.id, { kind: "reasoning", text: think.trim() });
-            appendEvent(active.id, agentMsg.id, {
+
+            const summary = narrationAll.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+            const closing = filesWritten
+              ? `Wrote ${filesWritten} file${filesWritten === 1 ? "" : "s"} into ${scopeName}.`
+              : "";
+            appendEvent(sess.id, agentMsg.id, {
               kind: "say",
-              plain: acc || "…the model returned an empty reply. Try again — the weights may still be loading.",
-              dev: `${settings.ollamaModel} · streamed locally · 0 bytes of code to the cloud`,
+              plain: summary || closing || "…the model returned an empty reply. Try again — the weights may still be loading.",
+              dev: filesWritten ? `${modelName} · ${filesWritten} file${filesWritten === 1 ? "" : "s"} written on your machine` : `${modelName} · on your machine`,
             });
+            if (!canWrite && !fastPath) {
+              appendEvent(sess.id, agentMsg.id, {
+                kind: "say",
+                plain: "Heads up: file-writing needs the desktop app — in this preview I can plan and explain, but I can't write to your disk.",
+                dev: "no file bridge in this environment",
+              });
+            }
           } catch (e: any) {
-            appendEvent(active.id, agentMsg.id, {
-              kind: "say",
-              plain: `I couldn't reach the live Laro engine (${e?.message || e}). Start Ollama, or flip Settings → Engine to Preview.`,
-              dev: `error: ${e?.message || e}`,
-            });
+            if (signal.aborted) {
+              appendEvent(sess.id, agentMsg.id, { kind: "say", plain: "Stopped — I left everything exactly where it was.", dev: "run aborted by user" });
+            } else {
+              appendEvent(sess.id, agentMsg.id, {
+                kind: "say",
+                plain: `I couldn't reach the local Laro engine (${e?.message || e}). Make sure Laro's engine is running, or switch Settings → Engine to Preview.`,
+                dev: `error: ${e?.message || e}`,
+              });
+            }
           }
+          finishRun();
+        })();
+
+        function finishRun() {
           setStreamText(null);
           setStreamThink(null);
           setSearching(null);
-          appendEvent(active.id, agentMsg.id, { kind: "done", ms: 0 });
+          appendEvent(sess.id, agentMsg.id, { kind: "done", ms: 0 });
           setRunning(false);
-        })();
+          abortRef.current = null;
+        }
         return;
       }
 
@@ -700,6 +892,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         images: attachments.length,
       });
       play(active.id, agentMsg.id, script, settings.permMode);
+    },
+
+    stopRun() {
+      // abort the live stream + agent loop wherever it is; the run's own
+      // catch/finally emits the "Stopped" line and clears running state.
+      abortRef.current?.abort();
+      // the demo runner uses a timer chain, not a stream — clear that too
+      if (timer.current) clearTimeout(timer.current);
+      setPending(null);
+      setStreamText(null);
+      setStreamThink(null);
+      setRunning(false);
+      // free the weights from RAM now — you stopped, so nothing should linger
+      if (st.settings.engine === "ollama") {
+        unloadModel(st.settings.ollamaUrl, st.settings.ollamaModel);
+      }
     },
 
     resolveGate(approve) {
@@ -785,6 +993,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       doneBg(bg, res.ok);
       const line: TermLine = { id: uid(), cmd: c, out: res.out, ok: res.ok, ts: Date.now() };
       mutSession(active.id, (s) => ({ ...s, term: [...s.term, line] }));
+      if (res.ok && st.settings.overnight && window.veylaro?.isDesktop) {
+        const prompt = [...active.msgs].reverse().find((msg) => msg.role === "user")?.text;
+        if (prompt) {
+          recordVerifiedPrecedent({
+            prompt,
+            scopeLabel: active.scope.split(/[\\/]/).pop() || "project",
+            check: c,
+            evidence: res.out.slice(0, 600),
+            model: st.settings.engine === "ollama" ? st.settings.ollamaModel : "manual-terminal",
+          });
+        }
+      }
     },
 
     setFullDiskAccess(on) {
@@ -823,9 +1043,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         (async () => {
           try {
             let acc = "";
+            // give the side chat real memory: the last ~12 turns as history, so
+            // it stops repeating itself and can reference what was already said.
+            const history = (st.sideChat || []).slice(-12).map((m) => ({
+              role: (m.role === "laro" ? "assistant" : "user") as "assistant" | "user",
+              content: m.text,
+            }));
             for await (const part of ollamaChat(
               st.settings.ollamaUrl, st.settings.ollamaModel,
-              [{ role: "system", content: LARO_SIDE_CHARTER },
+              [{ role: "system", content: laroContext(ramGB) + "\n\n" + LARO_SIDE_CHARTER },
+               ...history,
                { role: "user", content: t }],
               "lite", false
             )) if (part.type === "text") acc += part.chunk;

@@ -38,7 +38,9 @@ export function Nav() {
                 {l.label}
               </NavLink>
             ))}
-            <a href="/laro-showcase.html">Meet Laro</a>
+            <NavLink to="/meet-laro" className={({ isActive }) => (isActive ? "active" : "")}>
+              Meet Laro
+            </NavLink>
           </nav>
           <div className="nav-cta">
             <Link to="/pricing" className="btn ghost sm">
@@ -60,7 +62,7 @@ export function Nav() {
               {l.label}
             </NavLink>
           ))}
-          <a href="/laro-showcase.html">Meet Laro</a>
+          <NavLink to="/meet-laro">Meet Laro</NavLink>
           <NavLink to="/download">Download</NavLink>
           <NavLink to="/pricing">Start free</NavLink>
         </div>

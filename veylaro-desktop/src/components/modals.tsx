@@ -39,7 +39,14 @@ export function SignInModal({ onClose }: { onClose: () => void }) {
       {phase === "form" && (
         <>
           <h2><User size={19} /> Sign in to Veylaro</h2>
-          <p className="sub">Use the account you created on veylaro.ai. Your plan syncs; your code never does.</p>
+          <p className="sub">
+            Use the account you created on veylaro.ai — your plan syncs, your code never leaves.
+            No account yet?{" "}
+            <a href={`${SITE_URL}/#/pricing`} target="_blank" rel="noreferrer"
+              onClick={(e) => { if (window.veylaro) { e.preventDefault(); (window as any).open?.(`${SITE_URL}/#/pricing`); } }}>
+              Sign up on veylaroai.com →
+            </a>
+          </p>
           <div className="mrow">
             <label>Name</label>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Leo" />
@@ -101,6 +108,16 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
     onClose();
   };
 
+  const createProject = async () => {
+    const name = manual.trim() || "veylaro-project";
+    if (window.veylaro?.newProject) {
+      const dir = await window.veylaro.newProject(name);
+      if (typeof dir === "string" && dir) start(dir, "folder");
+      return; // cancelled or errored -> stay on the modal
+    }
+    start(name, "folder"); // browser preview: start a named scratch session
+  };
+
   const pick = async (kind: "file" | "folder") => {
     if (window.veylaro) {
       const p = kind === "file" ? await window.veylaro.pickFile() : await window.veylaro.pickFolder();
@@ -127,17 +144,21 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
     <Veil onClose={onClose}>
       <h2><Sparkle size={18} style={{ color: "var(--copper)" }} /> New session</h2>
       <p className="sub">
-        Pick what Laro is allowed to work on. It reads the scope, plans, and only ever edits inside it —
-        that's the scope lock.
+        Pick the starting scope for Laro's file tools. Protected paths and destructive commands stay
+        gated, and broader access requires an explicit setting.
       </p>
       <div className="mrow scope-pick">
+        <button onClick={createProject}>
+          <span className="st"><Sparkle size={16} style={{ color: "var(--copper)" }} /> New project</span>
+          <span className="ss">Create a fresh empty folder for Laro to build in from scratch.</span>
+        </button>
+        <button onClick={() => pick("folder")}>
+          <span className="st"><FolderIc size={16} /> Open a folder</span>
+          <span className="ss">Work in an existing project. Indexed on-device in seconds.</span>
+        </button>
         <button onClick={() => pick("file")}>
           <span className="st"><FileIc size={16} /> A single file</span>
           <span className="ss">Laser focus. Laro edits this file and nothing else.</span>
-        </button>
-        <button onClick={() => pick("folder")}>
-          <span className="st"><FolderIc size={16} /> A project folder</span>
-          <span className="ss">Full context. Indexed on-device in seconds.</span>
         </button>
       </div>
       <div className="mrow">
@@ -155,11 +176,7 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
           <Cpu size={16} style={{ flexShrink: 0, marginTop: 1, color: "var(--champagne)" }} />
           <span>
             Hardware fit check: this machine reports <b>{ramGB} GB RAM</b> —{" "}
-            {fitModel === "lite" ? (
-              <>we recommend <b>Laro Lite</b> here. Same brain, feather footprint.</>
-            ) : (
-              <>you can run <b>Laro Max</b> at full power. Lucky you.</>
-            )}
+            we recommend <b>{MODELS[fitModel].name}</b> for this machine.
             {store.settings.model !== fitModel && (
               <>
                 {" "}
@@ -420,9 +437,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <>
             <h1 style={{ fontSize: 27 }}>Three things worth knowing.</h1>
             <div className="ob-list">
-              <div><b>It only touches what you point it at.</b> Each session is locked to one file or folder. It physically cannot wander — and system files, keys and keychains are blocked in every mode.</div>
-              <div><b>It shows its work.</b> You'll see it think, plan, edit, run your app and click through it with its own cursor. No black box.</div>
-              <div><b>It gets better while you sleep.</b> Optional. Off by default. Everything it learns stays on this machine.</div>
+              <div><b>Its tools stay inside the scope you choose.</b> Each session starts with one file or folder. Protected paths and destructive commands remain gated; broader access requires an explicit setting.</div>
+              <div><b>It shows its work.</b> You can inspect the plan, edits, commands, test evidence and browser checks before accepting the result.</div>
+              <div><b>It can remember verified wins.</b> Optional and off by default. Passing local checks can become private precedents for similar work; this does not silently retrain the weights.</div>
             </div>
             <div className="ob-ctas">
               <button className="btn primary" onClick={onDone}>Let's build something →</button>

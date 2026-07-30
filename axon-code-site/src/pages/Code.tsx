@@ -71,7 +71,7 @@ export function Code() {
         <div className="container">
           <Reveal className="center" style={{ marginBottom: 52 }}>
             <span className="eyebrow"><span className="dot" />What it does</span>
-            <h2 className="h-xl">Everything the cloud agents do.<br /><span className="grad-text">Plus the things they won't.</span></h2>
+            <h2 className="h-xl">Local tools, memory<br /><span className="grad-text">and visible evidence.</span></h2>
           </Reveal>
           <div className="bento">
             {[
@@ -81,7 +81,7 @@ export function Code() {
               { c: "b-3", icon: <Layers />, t: "Time machine", b: "Every edit snaps a checkpoint on a scrubbable timeline. One click rewinds the session — line counts, files, everything rolls back." },
               { c: "b-3", icon: <Bolt />, t: "Sub-agents", b: "On capable machines Laro splits into Scout, Builder and Verifier lanes that work the problem in parallel. Auto-scales to your RAM." },
               { c: "b-2", icon: <Shield />, t: "Privacy HUD", b: "Live proof: 0 bytes to the cloud, tokens per second, RAM, and a running counter of what you've saved versus metered cloud agents." },
-              { c: "b-2", icon: <Memory />, t: "Overnight training", b: "Opt in and Laro practices while you sleep — a personal adapter trained on your accepted work, kept separate from base updates so nothing is ever lost." },
+              { c: "b-2", icon: <Memory />, t: "Private verified learning", b: "Opt in and Veylaro stores observed passing checks as local precedents. It retrieves relevant lessons later without pretending that review alone rewrote weights." },
               { c: "b-2", icon: <GitBranch />, t: "Internet when you want it", b: "A globe toggle grants live web search — only the query leaves the machine, never your code. Offline, everything still works." },
             ].map((f, i) => (
               <Reveal key={f.t} delay={(i % 3) * 100} className={f.c}>
@@ -103,13 +103,13 @@ export function Code() {
             <h2 className="h-xl">Updates land.<br /><span className="grad-text">Your Laro keeps its memory.</span></h2>
             <p className="lede" style={{ marginTop: 18 }}>
               When we ship smarter weights, the app shows a single <b>Download update</b> button.
-              Your personal overnight-training adapter is re-applied on top of every update —
-              so Laro gets our improvements <em>and</em> keeps everything it learned about you.
+              Your verified local precedents stay separate from model updates. Weight adapters
+              are promoted only after an unseen holdout beats the installed model.
             </p>
             <ul style={{ listStyle: "none", marginTop: 24, display: "flex", flexDirection: "column", gap: 12 }}>
               {[
                 "One-click model updates, checked against veylaro's feed",
-                "Personal adapter survives every base update",
+                "Verified local precedents survive every base update",
                 "Free tier limits respected even fully offline",
                 "Works on a plane, in a bunker, on your terms",
               ].map((t) => (
@@ -122,8 +122,8 @@ export function Code() {
           <Reveal variant="from-right" delay={120}>
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {[
-                { icon: <Gauge size={20} />, t: "Tuned for speed", b: "Weights stay hot between messages, the first token streams instantly, and Laro Lite answers at 60–80 tokens/sec on ordinary laptops." },
-                { icon: <Lock size={20} />, t: "Scope lock", b: "Every session is pinned to one file or folder. The agent physically cannot wander outside it." },
+                { icon: <Gauge size={20} />, t: "Tuned for speed", b: "Weights stay warm between messages and stream as soon as the local runtime responds. Throughput depends on model, memory and hardware." },
+                { icon: <Lock size={20} />, t: "Scope lock", b: "Every session starts inside one selected file or folder. Protected paths and destructive commands stay gated; broader access requires an explicit setting." },
                 { icon: <Sparkle size={20} />, t: "Asks before it assumes", b: "Ambiguous request? Laro asks up to four crisp questions — one at a time, with an 'Other' box so you can answer in your own words." },
               ].map((c) => (
                 <GlowCard key={c.t} style={{ display: "flex", gap: 18, alignItems: "flex-start", padding: 24 }}>

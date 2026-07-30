@@ -15,6 +15,10 @@ export interface AppConfig {
   latest_model_tag: string;
   update_notes: string;
   launch_month_on: boolean;
+  unlimited_for_all: boolean;
+  lite_download_enabled: boolean;
+  med_download_enabled: boolean;
+  max_download_enabled: boolean;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -23,6 +27,10 @@ export const DEFAULT_CONFIG: AppConfig = {
   latest_model_tag: "laro-med",
   update_notes: "",
   launch_month_on: true,
+  unlimited_for_all: false,
+  lite_download_enabled: false,
+  med_download_enabled: false,
+  max_download_enabled: false,
 };
 
 let cache: AppConfig | null = null;
@@ -32,7 +40,7 @@ export async function loadAppConfig(force = false): Promise<AppConfig> {
   try {
     const { data, error } = await supabase
       .from("app_config")
-      .select("downloads_enabled,latest_app_version,latest_model_tag,update_notes,launch_month_on")
+      .select("downloads_enabled,latest_app_version,latest_model_tag,update_notes,launch_month_on,unlimited_for_all,lite_download_enabled,med_download_enabled,max_download_enabled")
       .eq("id", 1)
       .single();
     if (error || !data) throw error || new Error("no row");

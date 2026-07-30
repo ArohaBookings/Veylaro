@@ -231,14 +231,14 @@ const TEMPLATES: Template[] = [
 ];
 
 /** Sub-agent lanes: 2 by default, 3 on 16 GB+ machines ("auto"). */
-/** Side-chat Laro — the featherweight companion (Lite when live). */
+/** Side-chat Laro — same Laro, quick window. Preview-only fallback text. */
 export function sideChatReply(text: string): string {
   const t = text.toLowerCase();
-  if (/^(hi|hey|hello|yo)\b/.test(t)) return "hey! i'm laro — ask me anything while the main run cooks. i stay featherweight over here so i never slow the real work down.";
-  if (/who are you|what are you/.test(t)) return "i'm laro, veylaro's local brain. this side window runs my lite side so the heavy lifting keeps all the RAM. same personality, smaller footprint.";
-  if (/what can you do|help/.test(t)) return "over here? quick questions, explain code words, plan your next prompt, or just keep you company. the big builds happen in the main window — this lane never blocks them.";
-  if (/\?$/.test(t)) return "good question — my honest take: " + (t.includes("best") ? "keep it simple first, make it work, then make it pretty. that order wins every time." : "break it into the smallest step you can verify, do that, then the next. that's how i'd attack it.");
-  return "noted. want me to turn that into a task for the main window? just paste it there and i'll go full-strength on it.";
+  if (/^(hi|hey|hello|yo)\b/.test(t)) return "hey — what's on your mind?";
+  if (/who (are|made) you|what are you|your creator|who built/.test(t)) return "i'm Laro, built by Veylaro Labs. my own model, running right here on your machine.";
+  if (/what can you do|help/.test(t)) return "anything — code, debugging, design, a plan for your next move, or just talk it out. try me.";
+  if (/\?$/.test(t)) return "my honest take: " + (t.includes("best") ? "make it work first, then make it beautiful. that order wins." : "break it into the smallest thing you can actually verify, ship that, then the next.");
+  return "got it. want me to just build it?";
 }
 
 export function buildLanes(prompt: string, scope: string, count: number): SubAgentLane[] {

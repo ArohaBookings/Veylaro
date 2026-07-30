@@ -9,13 +9,14 @@ export function Footer() {
           <div>
             <VeylaroLockup size={26} />
             <p className="f-desc">
-              The most powerful local AI coding agent in the world. Runs entirely on your machine —
-              private by physics, unlimited by design.
+              A local AI coding agent built around execution, evidence and user control. Inference
+              and project memory stay on your machine.
             </p>
           </div>
           <div>
             <h5>Product</h5>
             <Link className="f-link" to="/features">Features</Link>
+            <Link className="f-link" to="/meet-laro">Meet Laro</Link>
             <Link className="f-link" to="/benchmarks">Benchmarks</Link>
             <Link className="f-link" to="/pricing">Pricing</Link>
             <Link className="f-link" to="/download">Download</Link>
@@ -36,7 +37,7 @@ export function Footer() {
           </div>
           <div>
             <h5>Company</h5>
-            <a className="f-link" href="mailto:hello@veylaro.ai">Contact</a>
+            <Link className="f-link" to="/licenses">Licences</Link>
             <a className="f-link" href="#" onClick={(e) => e.preventDefault()}>X / Twitter</a>
             <a className="f-link" href="#" onClick={(e) => e.preventDefault()}>Discord</a>
             <Link className="f-link" to="/admin">Admin</Link>
