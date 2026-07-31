@@ -914,6 +914,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               }
             };
 
+            // REALITY CLUSTER — if the project has real tests, run them and repair
+            // against the ACTUAL failure (expected-vs-actual), up to 2 attempts. The
+            // grader proved a small model fixes far more when it sees the real error
+            // than when it patches blind. Never claims "works" without a green run.
+            const detectTestCmd = async (): Promise<string | null> => {
+              try {
+                const r = await window.veylaro!.readFile?.(`${scopeBase}/package.json`);
+                if (r?.ok && r.content) {
+                  const t = JSON.parse(r.content)?.scripts?.test;
+                  if (t && !/no test specified|exit 1/i.test(t)) return "npm test";
+                }
+              } catch { /* no package.json */ }
+              return null;
+            };
+            const verifyAndRepair = async (baseSys: ChatMsg[]) => {
+              const testCmd = await detectTestCmd();
+              if (!testCmd || signal.aborted) return;
+              stepLine("🧪 running the tests to check my work…");
+              let r = await runOne(testCmd);
+              if (r.ok) { appendEvent(sess.id, agentMsg.id, { kind: "verify", target: "npm test", ok: true, detail: "tests pass — verified by running them, not assumed" }); return; }
+              for (let att = 1; att <= 2 && !signal.aborted; att++) {
+                stepLine(`🔴 tests failing — reading the error and fixing (attempt ${att})`);
+                const conv: ChatMsg[] = [...baseSys, { role: "user", content: `The tests are failing:\n${r.out.slice(0, 900)}\n\nRead the failure — it shows expected vs actual — then fix the source file(s) with @@FILE … @@END. Do NOT change the test files.` }];
+                const p = new StreamParser();
+                for await (const part of ollamaChat(settings.ollamaUrl, settings.ollamaModel, conv, settings.model, false, signal)) {
+                  if (part.type !== "text") continue;
+                  for (const ev of p.push(part.chunk)) {
+                    if (ev.t === "file") await writeOne(ev.path, ev.content);
+                    else if (ev.t === "narrate") stepLine(ev.text);
+                  }
+                }
+                for (const ev of p.flush()) if (ev.t === "file") await writeOne(ev.path, ev.content);
+                for (const f of salvageFences(p.liveNarration).files) await writeOne(f.path, f.content);
+                r = await runOne(testCmd);
+                if (r.ok) { appendEvent(sess.id, agentMsg.id, { kind: "verify", target: "npm test", ok: true, detail: `tests pass after ${att} repair${att === 1 ? "" : "s"} — verified by running them` }); return; }
+              }
+              appendEvent(sess.id, agentMsg.id, { kind: "verify", target: "npm test", ok: false, detail: `tests still failing — I'm not claiming this works. Last error: ${r.out.slice(0, 180)}` });
+            };
+
             while (!done && step < maxSteps && !signal.aborted) {
               step++;
               const parser = new StreamParser();
@@ -975,6 +1014,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 convo.push({ role: "user", content: "Keep going until the task is genuinely complete and would actually run. If every file is written and it works, output @@DONE on its own line — otherwise write the next file now, don't stop early and don't ask whether to continue." });
               }
             }
+
+            // Reality Cluster: verify against the project's own tests and self-correct
+            // before handing back. Only runs when the project actually has tests.
+            if (filesWritten > 0 && !signal.aborted) await verifyAndRepair(sys);
 
             // Clean recap — a couple of factual sentences about what got built, NOT
             // the raw thinking. The persistent step lines above already showed the play-by-play.
