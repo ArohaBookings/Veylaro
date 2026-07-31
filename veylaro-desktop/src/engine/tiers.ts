@@ -72,7 +72,7 @@ export const SYSTEM_TIERS: TierProfile[] = [
     diskGB: 2.6,
     contextTokens: 16384,
     ollamaTag: "laro-lite",
-    runtime: { numPredict: 768, numCtx: 8192, keepAlive: "3m", temperature: 0.0 },
+    runtime: { numPredict: 768, numCtx: 8192, keepAlive: "20m", temperature: 0.0 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
       designSystemKit: true, adversarialRatchet: true,
@@ -93,7 +93,7 @@ export const SYSTEM_TIERS: TierProfile[] = [
     diskGB: 7.6,
     contextTokens: 16384,
     ollamaTag: "laro-med",
-    runtime: { numPredict: 1536, numCtx: 16384, keepAlive: "3m", temperature: 0.0 },
+    runtime: { numPredict: 1536, numCtx: 16384, keepAlive: "20m", temperature: 0.0 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
       designSystemKit: true, adversarialRatchet: true,
@@ -114,7 +114,7 @@ export const SYSTEM_TIERS: TierProfile[] = [
     diskGB: 14,
     contextTokens: 32768,
     ollamaTag: "laro-max",
-    runtime: { numPredict: 2048, numCtx: 32768, keepAlive: "3m", temperature: 0.0 },
+    runtime: { numPredict: 2048, numCtx: 32768, keepAlive: "20m", temperature: 0.0 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
       designSystemKit: true, adversarialRatchet: true,

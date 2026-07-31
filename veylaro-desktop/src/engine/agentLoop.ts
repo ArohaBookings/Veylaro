@@ -119,8 +119,13 @@ export class StreamParser {
     } else if (DONE_LINE.test(line)) {
       out.push({ t: "done" });
     } else {
-      // ordinary narration — keep it, it's what shows in the chat
+      // ordinary narration — keep it, and emit it as a completed line so the UI
+      // can persist it (the "leave the text there as it works" behaviour). We
+      // only emit lines with real content, so stray blank/punctuation lines don't
+      // clutter the log.
       this.narration.push(line);
+      const t = line.trim();
+      if (t.length > 2 && !/^[-*_=•>#`]+$/.test(t)) out.push({ t: "narrate", text: t });
     }
   }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { StoreProvider, uid, useStore } from "./state/store";
+import { OWNER_EMAIL, StoreProvider, uid, useStore } from "./state/store";
 import { Attachment } from "./types";
 import { VeylaroMark } from "./components/Logo";
 import { Sidebar } from "./components/Sidebar";
@@ -91,6 +91,9 @@ function Shell() {
           <VeylaroMark size={20} /> Veylaro <span style={{ color: "var(--copper)", marginLeft: 2 }}>Code</span>
         </span>
         <span className="env">
+          {(store.account?.email || "").trim().toLowerCase() === OWNER_EMAIL && (
+            <span className="dev-badge" title="Developer build — full, unrestricted Laro. You can talk weights and internals.">◆ DEV</span>
+          )}
           <span className="saved-chip" title="Chat, files, checkpoints and drafts autosave locally with a rolling recovery copy.">
             ✓ saved {new Date(lastSaved).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>

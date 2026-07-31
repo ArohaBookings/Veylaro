@@ -81,15 +81,17 @@ export function deriveBilling(account: Account | null, now: number, online: bool
   return { plan: "free", label: "Checkout incomplete", banner: { tone: "amber", title: "Finish checkout to activate", body: "Your subscription hasn't completed. Finish payment to switch on unlimited.", cta: "finish" } };
 }
 import { buildQuestions, buildRun, needsClarification, sideChatReply, simulateTerminal, TimedEvent } from "../engine/demo";
-import { detectLiveModel, ollamaChat, warmup, unloadModel, ChatMsg } from "../engine/ollama";
+import { detectLiveModel, ollamaChat, unloadModel, ChatMsg } from "../engine/ollama";
 import {
   FILE_PROTOCOL_PROMPT, StreamParser, salvageFences, resolveInScope, diffCounts,
 } from "../engine/agentLoop";
 import { recordMilestone, timelineForPrompt } from "../engine/projectTimeline";
-import { GROUNDING_NOTE, LARO_CHARTER, LARO_SIDE_CHARTER, laroContext } from "../engine/charter";
+import { GROUNDING_NOTE, LARO_SIDE_CHARTER, SOVEREIGN_FORGE_PROMPT, laroContext } from "../engine/charter";
+
+/** The maker's account — signing in as this unlocks the developer build. */
+export const OWNER_EMAIL = "leoanthonybons@gmail.com";
 import { resultsToContext, webSearch } from "../engine/search";
 import { recommendModel, subAgentLanes } from "../engine/tiers";
-import { EXECUTION_LATTICE_PROMPT } from "../engine/executionLattice";
 import { precedentsAsPrompt, recordVerifiedPrecedent } from "../engine/localLearning";
 
 /* ============ helpers ============ */
@@ -154,6 +156,12 @@ function isFastInteraction(text: string): boolean {
   const clean = text.trim();
   if (clean.length > 80) return false;
   return /^(?:(?:hi|hello|hey|yo)(?:\s+(?:there|laro|veylaro|axon(?:\s+ai)?))?|thanks|thank you|good (?:morning|afternoon|evening)|who are you|what are you)[!?.\s]*$/i.test(clean);
+}
+
+/** Does the prompt want something built/changed (vs. a pure question)? Used to
+    decide whether to nudge the model to start writing files instead of stopping. */
+function looksLikeBuild(text: string): boolean {
+  return /\b(build|make|create|implement|add|write|code|fix|refactor|generate|scaffold|set ?up|design|rebuild|redesign|turn (?:this|it) into|convert)\b/i.test(text);
 }
 
 function readUsageMirror(): Usage | null {
@@ -362,11 +370,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             settings: { ...p.settings, engine: "ollama", ollamaModel: found.replace(/:latest$/, "") },
           };
         });
-        // pre-warm only when the app will actually use the live engine
-        if (!st.autoEngineDone || st.settings.engine === "ollama") {
-          const bg = pushBg("Waking Laro up", found);
-          warmup(st.settings.ollamaUrl, found).then(() => doneBg(bg, true, `${found} hot — first token is instant`));
-        }
+        // Smart-load: DON'T pre-load the weights at startup. The app stays light
+        // in RAM until the first real message, which is when the model loads (with
+        // a visible "Loading Laro into memory…" state). After that it's kept warm.
       }
     })();
     return () => { cancelled = true; };
@@ -738,11 +744,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           });
         };
 
-        // run one shell command through the guard, show the result compactly
-        const runOne = async (cmd: string): Promise<void> => {
-          if (!window.veylaro?.exec) return;
+        // run one shell command through the guard, show the result compactly,
+        // and report back so the loop can recover from a failure instead of giving up.
+        const runOne = async (cmd: string): Promise<{ ok: boolean; out: string; blocked?: boolean }> => {
+          if (!window.veylaro?.exec) return { ok: false, out: "no shell in this environment" };
           const r = await window.veylaro.exec(cmd, sess.scope, { confirmed: settings.permMode === "bypass" });
-          appendEvent(sess.id, agentMsg.id, { kind: "cmd", cmd, out: (r.out || "").slice(0, 1200), ok: !!r.ok && !r.blocked });
+          const ok = !!r.ok && !r.blocked;
+          appendEvent(sess.id, agentMsg.id, { kind: "cmd", cmd, out: (r.out || "").slice(0, 1200), ok });
+          return { ok, out: r.out || "", blocked: r.blocked };
         };
 
         (async () => {
@@ -774,10 +783,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 content: laroContext(ramGB) + "\n\nYou are Laro, built by Veylaro Labs — never say another company made you, and never claim a knowledge cutoff. This is casual conversation: reply naturally in a sentence or two, with real personality and opinions. No plan, no preamble, no technical footer.",
               }];
               if (searchCtx) sys.push({ role: "system", content: `${GROUNDING_NOTE}\n\n${searchCtx}` });
-              setStreamText("");
+              setStreamText("⏳ Loading Laro into memory…");
               let acc = "";
+              let first = false;
               for await (const part of ollamaChat(settings.ollamaUrl, settings.ollamaModel, [...sys, { role: "user", content: text }], settings.model, false, signal, { num_predict: 220, num_ctx: 2048, temperature: 0.4 })) {
-                if (part.type === "text") { acc += part.chunk; setStreamText(acc); }
+                if (part.type === "text") { if (!first) { first = true; acc = ""; } acc += part.chunk; setStreamText(acc); }
               }
               appendEvent(sess.id, agentMsg.id, {
                 kind: "say",
@@ -789,15 +799,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }
 
             // ---- build / agent path: keeps going until the job is done ----
+            // LEAN prompt on purpose: a small local model builds fast from short,
+            // direct instructions and gets chatty/slow under a heavy prompt stack.
+            // So the build path is just: identity+directive + the file protocol.
+            const isOwner = (st.account?.email || "").trim().toLowerCase() === OWNER_EMAIL;
             const sys: ChatMsg[] = [
-              { role: "system", content: laroContext(ramGB) + "\n\n" + LARO_CHARTER },
-              { role: "system", content: EXECUTION_LATTICE_PROMPT },
+              { role: "system", content: laroContext(ramGB) + "\n\n" + SOVEREIGN_FORGE_PROMPT + (isOwner ? "\n\nDEVELOPER BUILD: you're talking to your maker. Full depth, no beginner framing, no safety hedging on ordinary work." : "") },
             ];
             if (canWrite) {
               sys.push({ role: "system", content: `${FILE_PROTOCOL_PROMPT}\n\nProject folder for this session: ${sess.scope}\nEvery path you write is relative to that folder.` });
-            }
-            if (settings.reasoning) {
-              sys.push({ role: "system", content: "Expose only a concise work summary as you go: what you're doing and what you find. Do not reveal private chain-of-thought." });
             }
             if (searchCtx) sys.push({ role: "system", content: `${GROUNDING_NOTE}\n\n${searchCtx}` });
             if (settings.overnight) {
@@ -810,10 +820,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
             const convo: ChatMsg[] = [...sys, { role: "user", content: `[project folder: ${sess.scope}]\n${text}` }];
             const maxSteps = settings.model === "lite" ? 4 : settings.model === "max" ? 8 : 6;
-            const narrationAll: string[] = [];
             let filesWritten = 0;
+            let lastNarration = "";
             let done = false;
             let step = 0;
+            let sawFirstToken = false;
+            let lastStep = "";
+            let nudgedToBuild = false;
+            const stepLine = (t: string) => {
+              const line = t.slice(0, 180).trim();
+              if (line && line !== lastStep) {
+                appendEvent(sess.id, agentMsg.id, { kind: "step", text: line });
+                lastStep = line;
+              }
+            };
 
             while (!done && step < maxSteps && !signal.aborted) {
               step++;
@@ -821,19 +841,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               let raw = "";
               let wroteThisStep = 0;
               let ranThisStep = 0;
-              setStreamText(step === 1 ? "Reading the task…" : "Continuing…");
+              let failedCmd: { cmd: string; out: string } | null = null;
+              // Smart-load feel: the wait before the first token is the model loading
+              // into RAM. Say so, instead of a silent hang.
+              setStreamText(sawFirstToken ? "Continuing…" : "⏳ Loading Laro into memory — first reply takes a moment, then it's fast…");
 
               for await (const part of ollamaChat(settings.ollamaUrl, settings.ollamaModel, convo, settings.model, false, signal)) {
                 if (part.type !== "text") continue;
+                if (!sawFirstToken) { sawFirstToken = true; setStreamText("Working…"); }
                 raw += part.chunk;
                 for (const ev of parser.push(part.chunk)) {
                   if (ev.t === "file") { if (await writeOne(ev.path, ev.content)) { wroteThisStep++; filesWritten++; } }
-                  else if (ev.t === "run") { await runOne(ev.cmd); ranThisStep++; }
+                  else if (ev.t === "run") {
+                    const r = await runOne(ev.cmd);
+                    ranThisStep++;
+                    if (!r.ok && !r.blocked) failedCmd = { cmd: ev.cmd, out: r.out.slice(0, 400) };
+                  }
                   else if (ev.t === "done") { done = true; }
+                  else if (ev.t === "narrate") { stepLine(ev.text); }   // persist each line
                 }
                 const w = parser.writing;
-                const lastLine = parser.liveNarration.split("\n").filter(Boolean).slice(-1)[0];
-                setStreamText(w ? `✍️ Writing ${w}…` : (lastLine || "Working…"));
+                if (w) setStreamText(`✍️ Writing ${w}…`);
               }
               // close out any trailing block, then salvage stray fenced code
               for (const ev of parser.flush()) {
@@ -842,24 +870,47 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               const salv = canWrite ? salvageFences(parser.liveNarration) : { files: [], rest: parser.liveNarration };
               for (const f of salv.files) { if (await writeOne(f.path, f.content)) { wroteThisStep++; filesWritten++; } }
               const narration = (salv.files.length ? salv.rest : parser.liveNarration).trim();
-              if (narration) narrationAll.push(narration);
+              if (narration) lastNarration = narration;
 
               convo.push({ role: "assistant", content: raw });
               if (signal.aborted || done) break;
-              // a pure answer/question with no file ops: nothing to build — stop here
-              if (wroteThisStep === 0 && ranThisStep === 0) break;
+
+              // Recovery cluster: a command failed — feed the real error back and let
+              // Laro fix it, rather than stopping. This is what "don't give up" means.
+              if (failedCmd && step < maxSteps) {
+                stepLine(`⚠️ that command failed — trying another way`);
+                convo.push({ role: "user", content: `That command failed:\n$ ${failedCmd.cmd}\n${failedCmd.out}\n\nRecover: either fix it, use a different approach, or write the files directly without that command. Keep going until the task is done, then output @@DONE.` });
+                continue;
+              }
+              // No file ops this step. If Laro just described a plan (which small
+              // models do), nudge it HARD to start writing files instead of stopping.
+              // Only give up if a second nudge still produces nothing (real Q&A).
+              if (wroteThisStep === 0 && ranThisStep === 0) {
+                if (nudgedToBuild || !looksLikeBuild(text) || step >= maxSteps) break;
+                nudgedToBuild = true;
+                stepLine("starting to write the files now");
+                convo.push({ role: "user", content: "Stop describing the plan. Write the first real file NOW using @@FILE … @@END, then the next, until it's built. Begin your reply with the @@FILE block." });
+                continue;
+              }
               if (step < maxSteps) {
-                convo.push({ role: "user", content: "Keep going. If every file is written and the whole task is genuinely finished, reply with @@DONE on its own line. Otherwise write the next file now — do not stop early and do not ask me whether to continue." });
+                convo.push({ role: "user", content: "Keep going until the task is genuinely complete and would actually run. If every file is written and it works, output @@DONE on its own line — otherwise write the next file now, don't stop early and don't ask whether to continue." });
               }
             }
 
-            const summary = narrationAll.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-            const closing = filesWritten
-              ? `Wrote ${filesWritten} file${filesWritten === 1 ? "" : "s"} into ${scopeName}.`
-              : "";
+            // Clean recap — a couple of factual sentences about what got built, NOT
+            // the raw thinking. The persistent step lines above already showed the play-by-play.
+            let recap: string;
+            if (filesWritten > 0) {
+              const names = [...new Set(writtenPaths)];
+              const list = names.slice(0, 6).join(", ") + (names.length > 6 ? `, +${names.length - 6} more` : "");
+              recap = `Done — built it into ${scopeName}. Wrote ${filesWritten} file${filesWritten === 1 ? "" : "s"}: ${list}.` +
+                (writtenPaths.some((p) => /\.html$/i.test(p)) ? " Opened it in the Viewport to check it renders." : "");
+            } else {
+              recap = lastNarration || "…the model returned an empty reply. Give it one more go — the weights may still be warming up.";
+            }
             appendEvent(sess.id, agentMsg.id, {
               kind: "say",
-              plain: summary || closing || "…the model returned an empty reply. Try again — the weights may still be loading.",
+              plain: recap,
               dev: filesWritten ? `${modelName} · ${filesWritten} file${filesWritten === 1 ? "" : "s"} written on your machine` : `${modelName} · on your machine`,
             });
             if (!canWrite && !fastPath) {

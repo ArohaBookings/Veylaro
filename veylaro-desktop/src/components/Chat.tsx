@@ -141,6 +141,13 @@ function EventView({ ev, lang }: { ev: AgentEvent; lang: LangPref }) {
           {lang !== "plain" && <div className="dev">{ev.dev}</div>}
         </div>
       );
+    case "step":
+      return (
+        <div className="ev ev-step">
+          <span className="ev-step-mark" aria-hidden />
+          <span>{glossify(ev.text)}</span>
+        </div>
+      );
     case "think":
       return <div className="ev think-inline">{ev.text}</div>;
     case "file":

@@ -137,8 +137,23 @@ ipcMain.handle("veylaro:exec", (_e, cmd, cwd, opts) => {
     }
   } catch { /* fall back to home */ }
   const shell = (opts && opts.shell) || process.env.SHELL || (process.platform === "win32" ? undefined : "/bin/zsh");
+  // A GUI-launched app inherits a minimal PATH (/usr/bin:/bin), so node, npx,
+  // git, python etc. installed in /usr/local/bin or Homebrew go missing \u2014 that's
+  // the "command not found: npx" failure. Prepend the usual toolchain dirs so
+  // Laro's commands actually find the tools that are installed.
+  const extraPaths = process.platform === "win32"
+    ? []
+    : ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/local/sbin",
+       path.join(os.homedir(), ".volta/bin"), path.join(os.homedir(), ".cargo/bin"),
+       path.join(os.homedir(), ".local/bin"), "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+  const env = { ...process.env };
+  if (extraPaths.length) {
+    const seen = new Set();
+    env.PATH = [...extraPaths, ...String(env.PATH || "").split(":")]
+      .filter((p) => p && !seen.has(p) && seen.add(p)).join(":");
+  }
   return new Promise((resolve) => {
-    exec(String(cmd), { cwd: dir, timeout: 180000, maxBuffer: 8 * 1024 * 1024, shell }, (err, stdout, stderr) => {
+    exec(String(cmd), { cwd: dir, timeout: 180000, maxBuffer: 8 * 1024 * 1024, shell, env }, (err, stdout, stderr) => {
       const out = [stdout, stderr].filter(Boolean).join("\n").trimEnd();
       resolve({ out: out || (err ? String(err.message) : "\u2713 done (no output)"), ok: !err });
     });

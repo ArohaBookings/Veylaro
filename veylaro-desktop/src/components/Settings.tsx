@@ -23,7 +23,6 @@ type PageId =
 const PAGES: { id: PageId; label: string; icon: JSX.Element }[] = [
   { id: "general", label: "General", icon: <Sparkle size={15} /> },
   { id: "models", label: "Models & speed", icon: <Cpu size={15} /> },
-  { id: "systems", label: "Systems", icon: <Bolt size={15} /> },
   { id: "permissions", label: "Permissions & safety", icon: <Shield size={15} /> },
   { id: "privacy", label: "Privacy", icon: <Eye size={15} /> },
   { id: "account", label: "Account & billing", icon: <User size={15} /> },
@@ -549,48 +548,6 @@ function AboutPage() {
 
 /* ---- the shell ---- */
 
-/* The systems that ship IN the app and run around every request. Training-only
-   systems (the overnight self-play pack, Twin Shadow Forge, the LoRA trainer)
-   are deliberately NOT listed — they run on the maker's machine to produce new
-   model versions, they don't ship to users. */
-const SHIPPED_SYSTEMS: { name: string; purpose: string }[] = [
-  ...PRODUCTION_SYSTEMS.map((s) => ({ name: s.name, purpose: s.purpose })),
-  { name: "Reproduction-first debugger", purpose: "A fix is only accepted when it flips a real failing test from red to green." },
-  { name: "Verified best-of-N", purpose: "Generates several candidates and keeps the one that actually passes the checks." },
-  { name: "Grounding gate (anti-hallucination)", purpose: "Blocks invented files, APIs and command output — say “I don't know” over guessing." },
-  { name: "Live web retrieval", purpose: "Fetches current results so answers aren't frozen at the model's training cutoff. Only your query leaves the machine." },
-  { name: "Apple-tier taste gate", purpose: "UI work is scored on real rendered evidence — contrast, overflow, responsiveness — not vibes." },
-  { name: "Private verified learning", purpose: "Consolidates checks that passed on your machine into retrievable precedents. Local, opt-in." },
-];
-
-function SystemsPage() {
-  return (
-    <>
-      <p className="sub" style={{ marginTop: 0, marginBottom: 16 }}>
-        The weights are only half of Laro. These systems run around every request — the
-        model proposes, and they decide what actually survives real execution. They ship on
-        every tier, which is how a small local model punches far above its size.
-      </p>
-      <div className="sys-list">
-        {SHIPPED_SYSTEMS.map((s) => (
-          <div className="sys-row" key={s.name}>
-            <span className="sys-dot" aria-hidden />
-            <div>
-              <div className="sys-name">{s.name}</div>
-              <div className="sys-purpose">{s.purpose}</div>
-            </div>
-            <span className="sys-on">on</span>
-          </div>
-        ))}
-      </div>
-      <p className="footnote" style={{ marginTop: 16 }}>
-        Every one of these runs locally. The overnight self-play and model-training systems
-        that build new Laro versions run on our side, not in your copy of the app.
-      </p>
-    </>
-  );
-}
-
 export function SettingsModal({ onClose, onSignIn, onUpgrade }: {
   onClose: () => void; onSignIn: () => void; onUpgrade: () => void;
 }) {
@@ -620,7 +577,6 @@ export function SettingsModal({ onClose, onSignIn, onUpgrade }: {
           <div className="set-body">
             {page === "general" && <GeneralPage />}
             {page === "models" && <ModelsPage />}
-            {page === "systems" && <SystemsPage />}
             {page === "permissions" && <PermissionsPage />}
             {page === "privacy" && <PrivacyPage />}
             {page === "account" && <AccountPage onSignIn={onSignIn} onUpgrade={onUpgrade} />}

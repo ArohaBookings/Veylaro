@@ -160,6 +160,7 @@ export interface Checkpoint {
 
 export type AgentEvent =
   | { kind: "say"; plain: string; dev: string }
+  | { kind: "step"; text: string } // a short "what I'm doing" line that persists as it streams
   | { kind: "think"; text: string }
   | {
       kind: "file";

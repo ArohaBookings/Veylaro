@@ -294,6 +294,12 @@ a { color: var(--copper); text-decoration: none; }
 }
 .ev-say .dev::before { content: "›"; color: var(--copper); }
 
+/* persistent "what I'm doing" step lines — they stay as Laro works */
+.ev-step { display: flex; gap: 9px; align-items: baseline; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+.ev-step-mark { width: 5px; height: 5px; border-radius: 50%; background: var(--copper); flex-shrink: 0; transform: translateY(-2px); opacity: 0.8; }
+.ev-step:last-of-type .ev-step-mark { animation: step-pulse 1.4s ease-in-out infinite; }
+@keyframes step-pulse { 0%,100% { opacity: 0.8; } 50% { opacity: 0.25; } }
+
 .ev-think {
   align-self: flex-start; font-size: 12.5px; color: var(--dim); font-style: italic;
   background: var(--surface); border: 1px dashed var(--border); border-radius: 100px; padding: 6px 14px;
@@ -858,6 +864,11 @@ a { color: var(--copper); text-decoration: none; }
 .saved-chip {
   color: var(--dim); font-size: 10px; border: 1px solid var(--border); border-radius: 100px;
   padding: 2px 9px; background: var(--surface); cursor: help;
+}
+.dev-badge {
+  color: var(--champagne); font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  border: 1px solid color-mix(in oklab, var(--copper) 55%, transparent); border-radius: 100px;
+  padding: 2px 9px; background: color-mix(in oklab, var(--copper) 14%, transparent); cursor: help;
 }
 .low-strip {
   width: min(860px, calc(100% - 48px)); margin: 0 auto 8px;
