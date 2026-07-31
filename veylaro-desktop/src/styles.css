@@ -745,6 +745,14 @@ a { color: var(--copper); text-decoration: none; }
 /* viewport */
 .vp { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .vp-bar { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+/* UI-taste score badge in the Viewport bar */
+.vp-taste { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 11px; font-weight: 700;
+  padding: 3px 8px; border-radius: 100px; cursor: help; font-variant-numeric: tabular-nums; }
+.vp-taste.good { color: var(--green, #4ade80); border: 1px solid color-mix(in oklab, var(--green, #4ade80) 40%, transparent); background: color-mix(in oklab, var(--green, #4ade80) 10%, transparent); }
+.vp-taste.bad { color: var(--amber, #f5b451); border: 1px solid color-mix(in oklab, var(--amber, #f5b451) 40%, transparent); background: color-mix(in oklab, var(--amber, #f5b451) 10%, transparent); }
+.vp-polish { border: none; cursor: pointer; font-size: 10.5px; font-weight: 700; color: #1a1109; background: var(--champagne, #f0cfa8);
+  border-radius: 100px; padding: 2px 9px; margin-left: 2px; }
+.vp-polish:hover { filter: brightness(1.05); }
 .vp-bar input {
   flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
   color: var(--text); font-family: var(--font-mono); font-size: 11.5px; padding: 6px 10px; outline: none; min-width: 0;

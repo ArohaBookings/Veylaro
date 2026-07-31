@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { BrowseStep } from "../types";
+import { UI_AUDIT_JS, formatCritique, highIssues, UiReport } from "../engine/uiCritique";
 
 /* Side chat — talk to Laro's featherweight side while the heavy work runs */
 function SideChat() {
@@ -139,9 +140,37 @@ function Viewport() {
   const [urlDraft, setUrlDraft] = useState(settings.viewportUrl);
   const [reloadKey, setReloadKey] = useState(0);
   const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(settings.viewportUrl);
+  const auditable = isLocal || /^file:/i.test(settings.viewportUrl);
   const allowed = isLocal || settings.internet;
   const isDesktop = !!window.veylaro;
   const { up, wentDownAt, clearDown } = useHealth(settings.viewportUrl, isLocal);
+
+  // UI-TASTE LOOP (in-app): when a page loads, measure its objective quality —
+  // contrast, overflow, fonts, tap targets — and surface a taste score. One tap
+  // on "Polish" feeds the exact issues back to Laro to fix. Same loop the harness
+  // proved took a page from 0/100 to 100/100.
+  const vpRef = useRef<any>(null);
+  const [taste, setTaste] = useState<UiReport | null>(null);
+  useEffect(() => {
+    const wv = vpRef.current;
+    if (!wv || !isDesktop || !auditable) { setTaste(null); return; }
+    let alive = true;
+    const audit = () => {
+      try {
+        wv.executeJavaScript(UI_AUDIT_JS, false).then((r: UiReport) => { if (alive && r) setTaste(r); }).catch(() => {});
+      } catch { /* webview not ready */ }
+    };
+    const onReady = () => setTimeout(audit, 400);
+    wv.addEventListener("dom-ready", onReady);
+    wv.addEventListener("did-navigate-in-page", onReady);
+    return () => { alive = false; try { wv.removeEventListener("dom-ready", onReady); wv.removeEventListener("did-navigate-in-page", onReady); } catch { /* gone */ } };
+  }, [settings.viewportUrl, reloadKey, isDesktop, auditable]);
+
+  const polish = () => {
+    if (!taste) return;
+    const critique = formatCritique(taste);
+    store.send(`Polish the UI you just built — a quick objective audit found issues. ${critique}`, []);
+  };
 
   const go = () => {
     let u = urlDraft.trim();
@@ -166,13 +195,24 @@ function Viewport() {
         <button className="icon-btn" style={{ width: 28, height: 28 }} title="Go / reload" onClick={go}>
           ⟳
         </button>
+        {taste && auditable && (
+          <span
+            className={`vp-taste ${highIssues(taste) ? "bad" : "good"}`}
+            title={taste.issues.length ? "UI taste check:\n" + taste.issues.map((i) => `• ${i.msg}`).join("\n") : "Clean — no contrast, overflow or font issues found."}
+          >
+            ✦ {taste.score}
+            {highIssues(taste) > 0 && !running && (
+              <button className="vp-polish" onClick={polish} title="Send these issues to Laro to fix">Polish</button>
+            )}
+          </span>
+        )}
       </div>
       <div className="vp-stage">
         {allowed ? (
           isDesktop ? (
             // Electron webview renders anything, incl. sites that refuse iframes
             // @ts-expect-error — webview is an Electron tag
-            <webview key={`${settings.viewportUrl}-${reloadKey}`} src={settings.viewportUrl} className="vp-frame" allowpopups="false" />
+            <webview ref={vpRef} key={`${settings.viewportUrl}-${reloadKey}`} src={settings.viewportUrl} className="vp-frame" allowpopups="false" />
           ) : (
             <iframe
               key={`${settings.viewportUrl}-${reloadKey}`}
