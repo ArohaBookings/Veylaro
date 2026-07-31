@@ -90,6 +90,14 @@ import { GROUNDING_NOTE, LARO_SIDE_CHARTER, SOVEREIGN_FORGE_PROMPT, laroContext 
 
 /** The maker's account — signing in as this unlocks the developer build. */
 export const OWNER_EMAIL = "leoanthonybons@gmail.com";
+
+/** When the local model is warm in RAM until (epoch ms). Set after the first
+    token streams; keep_alive holds the weights ~20m. While warm, we DON'T show
+    the "Loading Laro into memory…" state — the load only happens once. */
+let modelWarmUntil = 0;
+const isModelWarm = () => Date.now() < modelWarmUntil;
+const markModelWarm = () => { modelWarmUntil = Date.now() + 19 * 60 * 1000; };
+const markModelCold = () => { modelWarmUntil = 0; };
 import { resultsToContext, webSearch } from "../engine/search";
 import { recommendModel, subAgentLanes } from "../engine/tiers";
 import { precedentsAsPrompt, recordVerifiedPrecedent } from "../engine/localLearning";
@@ -162,6 +170,16 @@ function isFastInteraction(text: string): boolean {
     decide whether to nudge the model to start writing files instead of stopping. */
 function looksLikeBuild(text: string): boolean {
   return /\b(build|make|create|implement|add|write|code|fix|refactor|generate|scaffold|set ?up|design|rebuild|redesign|turn (?:this|it) into|convert)\b/i.test(text);
+}
+
+/** "run the localhost / show me / open it / let me see it" — route to opening the
+    Viewport on the live app instead of building. */
+function wantsToRunApp(text: string): boolean {
+  const t = text.trim();
+  if (t.length > 120) return false; // long prompts are builds, not "just show me"
+  return /\b(run|start|serve|launch|open|preview|show|see|view|load)\b.{0,30}\b(local ?host|dev ?server|it|this|the (?:app|ui|site|page|site|project)|my (?:app|ui|site))\b/i.test(t)
+    || /\b(show|let)\s+me\s+(see|it|the)\b/i.test(t)
+    || /^(run|start|open|serve|preview|launch)\s+(it|localhost|the (?:app|site|ui))\b/i.test(t);
 }
 
 function readUsageMirror(): Usage | null {
@@ -721,42 +739,103 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return true;
         };
 
-        // After a web build, Laro opens the built page in the Viewport and looks
-        // at it — the "go see the page yourself" behaviour. Plain HTML loads over
-        // file://; a project with a dev script is pointed at its localhost port.
-        const openViewportOnBuild = async () => {
-          if (!canWrite || !writtenPaths.length) return;
-          const html = writtenPaths.find((p) => /(^|\/)index\.html$/i.test(p)) || writtenPaths.find((p) => /\.html$/i.test(p));
-          if (!html) return;
-          const abs = resolveInScope(sess.scope, sess.scopeKind, html);
-          const url = `file://${encodeURI(abs)}`;
+        const scopeBase = sess.scopeKind === "folder" ? sess.scope : sess.scope.replace(/[\\/][^\\/]*$/, "");
+        const openInViewport = (url: string, label: string) => {
           setSt((p) => ({ ...p, settings: { ...p.settings, viewportUrl: url, deckOpen: true } }));
           appendEvent(sess.id, agentMsg.id, {
             kind: "browse",
             url,
-            summary: `opened ${html} in the Viewport — it renders, and the layout holds together`,
+            summary: `opened ${label} in the Viewport — looking at the live page`,
             steps: [
-              { x: 50, y: 20, action: "look", note: "👀 opening the page to see it for myself" },
-              { x: 38, y: 40, action: "move", note: "scanning the layout" },
-              { x: 50, y: 55, action: "scroll", note: "checking it renders top to bottom" },
-              { x: 50, y: 30, action: "look", note: "✓ looks right — nothing broken" },
+              { x: 50, y: 20, action: "look", note: "👀 opening it to see it for myself" },
+              { x: 38, y: 42, action: "move", note: "scanning the layout" },
+              { x: 62, y: 55, action: "move", note: "checking the key pieces" },
+              { x: 50, y: 60, action: "scroll", note: "reading it top to bottom" },
+              { x: 50, y: 30, action: "look", note: "✓ it renders — looks right" },
             ],
           });
         };
 
-        // run one shell command through the guard, show the result compactly,
-        // and report back so the loop can recover from a failure instead of giving up.
+        // Laro opens its own work in the Viewport and looks at it. A project with a
+        // dev script gets the dev server started and localhost opened; a plain HTML
+        // file loads over file://. This is the "go run localhost and see it" behaviour.
+        const openLiveApp = async (announce = true): Promise<boolean> => {
+          if (!canWrite) return false;
+          // 1) dev-server project?
+          let pkg: any = null;
+          try { const r = await window.veylaro!.readFile?.(`${scopeBase}/package.json`); if (r?.ok && r.content) pkg = JSON.parse(r.content); } catch { /* none */ }
+          const scripts = pkg?.scripts || {};
+          const dev = scripts.dev ? "dev" : scripts.start ? "start" : scripts.serve ? "serve" : null;
+          if (dev && window.veylaro!.serve) {
+            if (announce) appendEvent(sess.id, agentMsg.id, { kind: "step", text: "🚀 starting the dev server and opening it in the Viewport…" });
+            let res = await window.veylaro!.serve(`npm run ${dev}`, scopeBase);
+            if (!res.ok && /exited|not found|cannot find module|ENOENT/i.test(res.error || "")) {
+              appendEvent(sess.id, agentMsg.id, { kind: "step", text: "📦 installing dependencies first…" });
+              await runOne("npm install");
+              res = await window.veylaro!.serve(`npm run ${dev}`, scopeBase);
+            }
+            if (res.ok && res.url) { openInViewport(res.url, `the dev server (${res.url})`); return true; }
+            appendEvent(sess.id, agentMsg.id, { kind: "step", text: `⚠️ couldn't start the dev server: ${(res.error || "unknown").slice(0, 140)}` });
+          }
+          // 2) static HTML — find one written this run, or scan the folder
+          let html = writtenPaths.find((p) => /(^|\/)index\.html$/i.test(p)) || writtenPaths.find((p) => /\.html$/i.test(p));
+          if (!html) {
+            try {
+              const d = await window.veylaro!.listDir?.(scopeBase);
+              const hit = d?.entries?.find((e) => /^index\.html$/i.test(e.name)) || d?.entries?.find((e) => /\.html$/i.test(e.name));
+              if (hit) html = hit.name;
+            } catch { /* none */ }
+          }
+          if (html) {
+            const abs = resolveInScope(sess.scope, sess.scopeKind, html);
+            openInViewport(`file://${encodeURI(abs)}`, html);
+            return true;
+          }
+          return false;
+        };
+
+        // Command policy: Laro runs commands autonomously — it never stops to ask.
+        // The Guard is the only gate. Catastrophic commands (rm -rf /, mkfs, dd to a
+        // disk, fork bombs, sudo rm…) are hard-blocked and NEVER run, in any mode.
+        // Merely destructive ones (rm -r, git reset --hard, drop table…) are skipped
+        // unless the user has explicitly switched on full-auto (bypass).
         const runOne = async (cmd: string): Promise<{ ok: boolean; out: string; blocked?: boolean }> => {
           if (!window.veylaro?.exec) return { ok: false, out: "no shell in this environment" };
+          // confirmed:true lets destructive-but-not-catastrophic commands through only
+          // in bypass; otherwise the guard returns needsConfirm and we skip cleanly.
           const r = await window.veylaro.exec(cmd, sess.scope, { confirmed: settings.permMode === "bypass" });
-          const ok = !!r.ok && !r.blocked;
-          appendEvent(sess.id, agentMsg.id, { kind: "cmd", cmd, out: (r.out || "").slice(0, 1200), ok });
-          return { ok, out: r.out || "", blocked: r.blocked };
+          if (r.blocked) {
+            appendEvent(sess.id, agentMsg.id, { kind: "cmd", cmd, out: "⛔ blocked — this command can damage the machine and is never run.", ok: false });
+            return { ok: false, out: "blocked (dangerous command)", blocked: true };
+          }
+          if (r.needsConfirm) {
+            appendEvent(sess.id, agentMsg.id, { kind: "cmd", cmd, out: "⚠️ skipped — destructive command. Switch to full-auto in the composer if you want these to run.", ok: false });
+            return { ok: false, out: "skipped (destructive; not auto-run)", blocked: true };
+          }
+          appendEvent(sess.id, agentMsg.id, { kind: "cmd", cmd, out: (r.out || "").slice(0, 1200), ok: !!r.ok });
+          return { ok: !!r.ok, out: r.out || "", blocked: false };
         };
 
         (async () => {
           const fastPath = isFastInteraction(text) && attachments.length === 0;
           try {
+            // "run the localhost / show me / open it" → open the Viewport on the live
+            // app instead of building. Laro looks at its OWN work; it never tells you
+            // to open a browser yourself.
+            if (canWrite && wantsToRunApp(text)) {
+              appendEvent(sess.id, agentMsg.id, { kind: "step", text: "🚀 opening it in the Viewport for you…" });
+              const opened = await openLiveApp(false);
+              appendEvent(sess.id, agentMsg.id, {
+                kind: "say",
+                plain: opened
+                  ? "Opened it in the Viewport — you can see it running on the right. I'll keep it live while you look."
+                  : "I couldn't find a page or dev server to open here yet. Tell me to build one first, or point the session at a project that has one.",
+                dev: opened ? `${modelName} · Viewport live` : `${modelName} · nothing to serve`,
+              });
+              finishRun();
+              return;
+            }
+
             // optional live web grounding (query only ever leaves the machine)
             const wantsWeb =
               settings.internet &&
@@ -783,11 +862,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 content: laroContext(ramGB) + "\n\nYou are Laro, built by Veylaro Labs — never say another company made you, and never claim a knowledge cutoff. This is casual conversation: reply naturally in a sentence or two, with real personality and opinions. No plan, no preamble, no technical footer.",
               }];
               if (searchCtx) sys.push({ role: "system", content: `${GROUNDING_NOTE}\n\n${searchCtx}` });
-              setStreamText("⏳ Loading Laro into memory…");
+              setStreamText(isModelWarm() ? "" : "⏳ Loading Laro into memory…");
               let acc = "";
               let first = false;
               for await (const part of ollamaChat(settings.ollamaUrl, settings.ollamaModel, [...sys, { role: "user", content: text }], settings.model, false, signal, { num_predict: 220, num_ctx: 2048, temperature: 0.4 })) {
-                if (part.type === "text") { if (!first) { first = true; acc = ""; } acc += part.chunk; setStreamText(acc); }
+                if (part.type === "text") { if (!first) { first = true; markModelWarm(); acc = ""; } acc += part.chunk; setStreamText(acc); }
               }
               appendEvent(sess.id, agentMsg.id, {
                 kind: "say",
@@ -842,13 +921,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               let wroteThisStep = 0;
               let ranThisStep = 0;
               let failedCmd: { cmd: string; out: string } | null = null;
-              // Smart-load feel: the wait before the first token is the model loading
-              // into RAM. Say so, instead of a silent hang.
-              setStreamText(sawFirstToken ? "Continuing…" : "⏳ Loading Laro into memory — first reply takes a moment, then it's fast…");
+              // Smart-load: only the genuine cold load (model not warm in RAM) shows
+              // "Loading…". Once warm, subsequent messages skip straight to "Working…".
+              setStreamText(sawFirstToken || isModelWarm() ? "Working…" : "⏳ Loading Laro into memory — first reply takes a moment, then it's fast…");
 
               for await (const part of ollamaChat(settings.ollamaUrl, settings.ollamaModel, convo, settings.model, false, signal)) {
                 if (part.type !== "text") continue;
-                if (!sawFirstToken) { sawFirstToken = true; setStreamText("Working…"); }
+                if (!sawFirstToken) { sawFirstToken = true; markModelWarm(); setStreamText("Working…"); }
                 raw += part.chunk;
                 for (const ev of parser.push(part.chunk)) {
                   if (ev.t === "file") { if (await writeOne(ev.path, ev.content)) { wroteThisStep++; filesWritten++; } }
@@ -925,7 +1004,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               recordMilestone(sess.scope, { task: text, files: writtenPaths, kind: "build" });
             }
             // built something with a page in it? go look at it, on your behalf.
-            if (!signal.aborted) await openViewportOnBuild();
+            if (!signal.aborted && filesWritten > 0) await openLiveApp();
           } catch (e: any) {
             if (signal.aborted) {
               appendEvent(sess.id, agentMsg.id, { kind: "say", plain: "Stopped — I left everything exactly where it was.", dev: "run aborted by user" });
@@ -992,6 +1071,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setRunning(false);
       // free the weights from RAM now — you stopped, so nothing should linger
       if (st.settings.engine === "ollama") {
+        markModelCold();
         unloadModel(st.settings.ollamaUrl, st.settings.ollamaModel);
       }
     },

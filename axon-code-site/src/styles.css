@@ -707,7 +707,10 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; line-height
 @media (max-width: 1100px) { .admin-grid { grid-template-columns: 1fr !important; } }
 
 .page-hero { padding: calc(var(--nav-h) + 90px) 0 70px; text-align: center; }
-.page-hero .lede { margin-top: 20px; }
+/* page-hero is centered, so its lede must centre too — max-width + no auto margin
+   otherwise pins it to the left on wide screens. Legal heroes use .legal-updated,
+   not .lede, so this never affects the left-aligned policy pages. */
+.page-hero .lede { margin-top: 20px; margin-left: auto; margin-right: auto; }
 
 .notfound { min-height: 70vh; display: grid; place-items: center; text-align: center; padding-top: var(--nav-h); }
 
@@ -897,6 +900,10 @@ code.inline { font-family: var(--font-mono); font-size: 0.9em; background: rgba(
 
 .meet-hero { min-height: min(760px, 88vh); display: flex; align-items: center; }
 .meet-hero .container { width: 100%; }
+/* the hero is centered, but .lede has a max-width and only auto-centres inside a
+   .center wrapper — without this it sticks to the container's left edge on wide
+   screens (the "text too far left" bug). */
+.meet-hero .lede { margin-left: auto; margin-right: auto; }
 .back-link {
   display: inline-flex; margin-bottom: 28px; color: var(--muted); font-size: 14px;
   text-decoration: none;

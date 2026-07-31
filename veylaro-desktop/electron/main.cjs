@@ -2,10 +2,24 @@ const { app, BrowserWindow, ipcMain, dialog, shell, powerMonitor } = require("el
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
-const { exec } = require("child_process");
+const { exec, spawn } = require("child_process");
 const guard = require("./guard.cjs");
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL || null;
+
+// Background dev servers Laro starts (so it can open localhost in the Viewport).
+// Tracked by pid so we can stop them on request and kill them all on quit.
+const devServers = new Map(); // pid -> { child, url }
+
+// Build the augmented PATH once — a GUI-launched app otherwise can't find node/npx.
+function toolPath() {
+  if (process.platform === "win32") return process.env.PATH;
+  const extra = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/local/sbin",
+    path.join(os.homedir(), ".volta/bin"), path.join(os.homedir(), ".cargo/bin"),
+    path.join(os.homedir(), ".local/bin"), "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+  const seen = new Set();
+  return [...extra, ...String(process.env.PATH || "").split(":")].filter((p) => p && !seen.has(p) && seen.add(p)).join(":");
+}
 
 // Single instance only — launching Veylaro again focuses the existing window
 // instead of opening a second (or third) copy.
@@ -137,27 +151,73 @@ ipcMain.handle("veylaro:exec", (_e, cmd, cwd, opts) => {
     }
   } catch { /* fall back to home */ }
   const shell = (opts && opts.shell) || process.env.SHELL || (process.platform === "win32" ? undefined : "/bin/zsh");
-  // A GUI-launched app inherits a minimal PATH (/usr/bin:/bin), so node, npx,
-  // git, python etc. installed in /usr/local/bin or Homebrew go missing \u2014 that's
-  // the "command not found: npx" failure. Prepend the usual toolchain dirs so
-  // Laro's commands actually find the tools that are installed.
-  const extraPaths = process.platform === "win32"
-    ? []
-    : ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/local/sbin",
-       path.join(os.homedir(), ".volta/bin"), path.join(os.homedir(), ".cargo/bin"),
-       path.join(os.homedir(), ".local/bin"), "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
-  const env = { ...process.env };
-  if (extraPaths.length) {
-    const seen = new Set();
-    env.PATH = [...extraPaths, ...String(env.PATH || "").split(":")]
-      .filter((p) => p && !seen.has(p) && seen.add(p)).join(":");
-  }
+  // A GUI-launched app inherits a minimal PATH, so node/npx/git go missing (the
+  // "command not found: npx" failure). toolPath() prepends the real toolchain dirs.
+  const env = { ...process.env, PATH: toolPath() };
   return new Promise((resolve) => {
     exec(String(cmd), { cwd: dir, timeout: 180000, maxBuffer: 8 * 1024 * 1024, shell, env }, (err, stdout, stderr) => {
       const out = [stdout, stderr].filter(Boolean).join("\n").trimEnd();
       resolve({ out: out || (err ? String(err.message) : "\u2713 done (no output)"), ok: !err });
     });
   });
+});
+
+// Start a dev server in the BACKGROUND and hand back the localhost URL, so Laro
+// can open its own work in the Viewport. Unlike exec, this does NOT wait for the
+// (never-ending) process to finish \u2014 it watches the output for a localhost URL,
+// returns as soon as it sees one, and keeps the server running.
+ipcMain.handle("veylaro:serve", (_e, cmd, cwd) => {
+  const verdict = guard.checkCommand(cmd);
+  if (!verdict.allow) return Promise.resolve({ ok: false, error: `Blocked: ${verdict.reason}` });
+  let dir = os.homedir();
+  try {
+    if (cwd) {
+      const p = guard.norm(cwd);
+      const st = fs.existsSync(p) && fs.statSync(p);
+      dir = st ? (st.isDirectory() ? p : path.dirname(p)) : os.homedir();
+    }
+  } catch { /* home */ }
+  const shell = process.env.SHELL || "/bin/zsh";
+  return new Promise((resolve) => {
+    let done = false;
+    let child;
+    try {
+      child = spawn(String(cmd), { cwd: dir, shell, env: { ...process.env, PATH: toolPath(), FORCE_COLOR: "0", BROWSER: "none" } });
+    } catch (e) {
+      return resolve({ ok: false, error: String(e && e.message) });
+    }
+    const finish = (res) => { if (!done) { done = true; resolve(res); } };
+    let buf = "";
+    const sniff = (chunk) => {
+      buf += String(chunk);
+      // common dev-server announcements: "localhost:3000", "Local: http://localhost:5173/"
+      const m = buf.match(/https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})/i) || buf.match(/(?:localhost|127\.0\.0\.1):(\d{2,5})/i);
+      if (m && child.pid) {
+        const port = m[1] || (m[0].match(/:(\d{2,5})/) || [])[1];
+        const url = `http://localhost:${port}`;
+        devServers.set(child.pid, { child, url });
+        finish({ ok: true, url, pid: child.pid });
+      }
+    };
+    child.stdout && child.stdout.on("data", sniff);
+    child.stderr && child.stderr.on("data", sniff);
+    child.on("error", (e) => finish({ ok: false, error: String(e && e.message) }));
+    child.on("exit", (code) => finish({ ok: false, error: `server exited (${code})\n${buf.slice(-500)}` }));
+    // Fallback: if it never prints a URL, guess the port from the command after 9s.
+    setTimeout(() => {
+      if (done || !child.pid) return;
+      const guess = /vite/i.test(cmd) ? 5173 : /next/i.test(cmd) ? 3000 : /(\bserve\b|http-server)/i.test(cmd) ? 8080 : 3000;
+      const url = `http://localhost:${guess}`;
+      devServers.set(child.pid, { child, url });
+      finish({ ok: true, url, pid: child.pid, guessed: true });
+    }, 9000);
+  });
+});
+
+ipcMain.handle("veylaro:stopServe", (_e, pid) => {
+  const s = devServers.get(pid);
+  if (s) { try { s.child.kill("SIGTERM"); } catch { /* gone */ } devServers.delete(pid); return { ok: true }; }
+  return { ok: false };
 });
 
 /* ---- real file access, every call guarded ---- */
@@ -239,6 +299,14 @@ app.whenReady().then(() => {
   });
 });
 
+app.on("before-quit", () => {
+  // never leave orphan dev servers running after the app closes
+  for (const { child } of devServers.values()) { try { child.kill("SIGTERM"); } catch { /* gone */ } }
+  devServers.clear();
+});
+
 app.on("window-all-closed", () => {
+  for (const { child } of devServers.values()) { try { child.kill("SIGTERM"); } catch { /* gone */ } }
+  devServers.clear();
   if (process.platform !== "darwin") app.quit();
 });

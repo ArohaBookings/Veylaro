@@ -271,6 +271,8 @@ export interface VeylaroBridge {
   powerState?: () => Promise<{ idleSec: number; onBattery: boolean; ok: boolean }>;
   sysinfo: () => Promise<{ ramGB: number; platform: string; arch: string; cpus: number; version: string }>;
   exec: (cmd: string, cwd?: string, opts?: { confirmed?: boolean; shell?: string }) => Promise<{ out: string; ok: boolean; blocked?: boolean; needsConfirm?: boolean }>;
+  serve?: (cmd: string, cwd?: string) => Promise<{ ok: boolean; url?: string; pid?: number; guessed?: boolean; error?: string }>;
+  stopServe?: (pid: number) => Promise<{ ok: boolean }>;
   readFile?: (p: string) => Promise<{ ok: boolean; content?: string; error?: string }>;
   writeFile?: (p: string, content: string, ctx?: GuardCtx) => Promise<{ ok: boolean; path?: string; blocked?: boolean; needsConfirm?: boolean; error?: string }>;
   listDir?: (p: string) => Promise<{ ok: boolean; entries?: { name: string; dir: boolean }[]; error?: string }>;
