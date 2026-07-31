@@ -209,17 +209,17 @@ function ModelsPage() {
         <label>Where the model runs</label>
         <div className="seg" style={{ width: "fit-content" }}>
           <button className={settings.engine === "demo" ? "on" : ""} onClick={() => setSettings({ engine: "demo" })}>Preview brain</button>
-          <button className={settings.engine === "ollama" ? "on" : ""} onClick={() => setSettings({ engine: "ollama" })}>Installed weights</button>
+          <button className={settings.engine === "veylaro" ? "on" : ""} onClick={() => setSettings({ engine: "veylaro" })}>Installed weights</button>
         </div>
-        {settings.engine === "ollama" && (
+        {settings.engine === "veylaro" && (
           <>
             <div className="mrow">
               <label>Local address</label>
-              <input type="text" value={settings.ollamaUrl} onChange={(e) => setSettings({ ollamaUrl: e.target.value })} />
+              <input type="text" value={settings.engineUrl} onChange={(e) => setSettings({ engineUrl: e.target.value })} />
             </div>
             <div className="mrow">
               <label>Model name</label>
-              <input type="text" value={settings.ollamaModel} onChange={(e) => setSettings({ ollamaModel: e.target.value })} />
+              <input type="text" value={settings.engineModel} onChange={(e) => setSettings({ engineModel: e.target.value })} />
             </div>
           </>
         )}

@@ -81,11 +81,12 @@ export function deriveBilling(account: Account | null, now: number, online: bool
   return { plan: "free", label: "Checkout incomplete", banner: { tone: "amber", title: "Finish checkout to activate", body: "Your subscription hasn't completed. Finish payment to switch on unlimited.", cta: "finish" } };
 }
 import { buildQuestions, buildRun, needsClarification, sideChatReply, simulateTerminal, TimedEvent } from "../engine/demo";
-import { detectLiveModel, ollamaChat, unloadModel, ChatMsg } from "../engine/ollama";
+import { detectLiveModel, veylaroChat, unloadModel, ChatMsg } from "../engine/runtime";
 import {
   FILE_PROTOCOL_PROMPT, StreamParser, salvageFences, resolveInScope, diffCounts,
 } from "../engine/agentLoop";
 import { recordMilestone, timelineForPrompt } from "../engine/projectTimeline";
+import { planForMemory } from "../engine/memoryGuard";
 import { GROUNDING_NOTE, LARO_SIDE_CHARTER, SOVEREIGN_FORGE_PROMPT, laroContext } from "../engine/charter";
 
 /** The maker's account — signing in as this unlocks the developer build. */
@@ -139,8 +140,8 @@ const DEFAULT_SETTINGS: Settings = {
   personality: true,
   sounds: false,
   engine: "demo",
-  ollamaUrl: "http://127.0.0.1:11434",
-  ollamaModel: "veylaro-code",
+  engineUrl: "http://127.0.0.1:11434",
+  engineModel: "veylaro-code",
   internet: true,
   planMode: true,
   subAgents: "auto",
@@ -376,7 +377,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const found = await detectLiveModel(st.settings.ollamaUrl);
+      const found = await detectLiveModel(st.settings.engineUrl);
       if (cancelled) return;
       setLiveModel(found);
       if (found) {
@@ -385,7 +386,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return {
             ...p,
             autoEngineDone: true,
-            settings: { ...p.settings, engine: "ollama", ollamaModel: found.replace(/:latest$/, "") },
+            settings: { ...p.settings, engine: "veylaro", engineModel: found.replace(/:latest$/, "") },
           };
         });
         // Smart-load: DON'T pre-load the weights at startup. The app stays light
@@ -469,7 +470,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ev.kind === "verify" &&
       ev.ok &&
       st.settings.overnight &&
-      st.settings.engine === "ollama" &&
+      st.settings.engine === "veylaro" &&
       window.veylaro?.isDesktop
     ) {
       const session = st.sessions.find((item) => item.id === sessionId);
@@ -480,7 +481,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           scopeLabel: session?.scope.split(/[\\/]/).pop() || "project",
           check: ev.target,
           evidence: ev.detail,
-          model: st.settings.ollamaModel,
+          model: st.settings.engineModel,
         });
       }
     }
@@ -691,7 +692,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       const { settings } = st;
 
-      if (settings.engine === "ollama") {
+      if (settings.engine === "veylaro") {
         // live model path — real local inference, real file writes.
         setRunning(true);
         const controller = new AbortController();
@@ -702,6 +703,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const scopeName = sess.scope.split(/[\\/]/).pop() || "the project";
         const canWrite = !!window.veylaro?.writeFile;
         const writtenPaths: string[] = []; // everything Laro wrote, for the auto-Viewport
+        // Memory Guard: right-size the context to this machine so it never swaps.
+        // On the target configs (Lite/8GB, Med/16GB) this returns the FULL context —
+        // no change, no performance loss. It only shrinks when RAM is genuinely tight.
+        const memPlan = planForMemory(settings.model, ramGB);
 
         // write one file through the guarded bridge; emit a compact row, not code
         const writeOne = async (rel: string, content: string): Promise<boolean> => {
@@ -712,6 +717,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const r = await window.veylaro!.readFile?.(abs);
             if (r?.ok) old = r.content ?? null;
           } catch { /* new file */ }
+          // No-op guard: a rewrite that's identical to what's already on disk isn't
+          // progress. Skip it so Laro can't spin re-saving the same file ("adding a
+          // border", "adding padding"…) burning steps, time and RAM for nothing.
+          if (old !== null && old.trim() === content.trim()) return false;
           const res = await window.veylaro!.writeFile!(abs, content, {
             scope: sess.scope,
             scopeKind: sess.scopeKind,
@@ -865,7 +874,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               setStreamText(isModelWarm() ? "" : "⏳ Loading Laro into memory…");
               let acc = "";
               let first = false;
-              for await (const part of ollamaChat(settings.ollamaUrl, settings.ollamaModel, [...sys, { role: "user", content: text }], settings.model, false, signal, { num_predict: 220, num_ctx: 2048, temperature: 0.4 })) {
+              for await (const part of veylaroChat(settings.engineUrl, settings.engineModel, [...sys, { role: "user", content: text }], settings.model, false, signal, { num_predict: 220, num_ctx: 2048, temperature: 0.4 })) {
                 if (part.type === "text") { if (!first) { first = true; markModelWarm(); acc = ""; } acc += part.chunk; setStreamText(acc); }
               }
               appendEvent(sess.id, agentMsg.id, {
@@ -898,6 +907,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             if (history) sys.push({ role: "system", content: history });
 
             const convo: ChatMsg[] = [...sys, { role: "user", content: `[project folder: ${sess.scope}]\n${text}` }];
+            // Memory Guard note — only when it actually had to intervene on a tight machine.
+            if (memPlan.fits === "downshift" || memPlan.fits === "tight") {
+              appendEvent(sess.id, agentMsg.id, { kind: "step", text: `💾 ${memPlan.note}` });
+            }
             const maxSteps = settings.model === "lite" ? 4 : settings.model === "max" ? 8 : 6;
             let filesWritten = 0;
             let lastNarration = "";
@@ -938,7 +951,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 stepLine(`🔴 tests failing — reading the error and fixing (attempt ${att})`);
                 const conv: ChatMsg[] = [...baseSys, { role: "user", content: `The tests are failing:\n${r.out.slice(0, 900)}\n\nRead the failure — it shows expected vs actual — then fix the source file(s) with @@FILE … @@END. Do NOT change the test files.` }];
                 const p = new StreamParser();
-                for await (const part of ollamaChat(settings.ollamaUrl, settings.ollamaModel, conv, settings.model, false, signal)) {
+                for await (const part of veylaroChat(settings.engineUrl, settings.engineModel, conv, settings.model, false, signal, { num_ctx: memPlan.numCtx })) {
                   if (part.type !== "text") continue;
                   for (const ev of p.push(part.chunk)) {
                     if (ev.t === "file") await writeOne(ev.path, ev.content);
@@ -964,7 +977,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               // "Loading…". Once warm, subsequent messages skip straight to "Working…".
               setStreamText(sawFirstToken || isModelWarm() ? "Working…" : "⏳ Loading Laro into memory — first reply takes a moment, then it's fast…");
 
-              for await (const part of ollamaChat(settings.ollamaUrl, settings.ollamaModel, convo, settings.model, false, signal)) {
+              for await (const part of veylaroChat(settings.engineUrl, settings.engineModel, convo, settings.model, false, signal, { num_ctx: memPlan.numCtx })) {
                 if (part.type !== "text") continue;
                 if (!sawFirstToken) { sawFirstToken = true; markModelWarm(); setStreamText("Working…"); }
                 raw += part.chunk;
@@ -1113,9 +1126,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setStreamThink(null);
       setRunning(false);
       // free the weights from RAM now — you stopped, so nothing should linger
-      if (st.settings.engine === "ollama") {
+      if (st.settings.engine === "veylaro") {
         markModelCold();
-        unloadModel(st.settings.ollamaUrl, st.settings.ollamaModel);
+        unloadModel(st.settings.engineUrl, st.settings.engineModel);
       }
     },
 
@@ -1210,7 +1223,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             scopeLabel: active.scope.split(/[\\/]/).pop() || "project",
             check: c,
             evidence: res.out.slice(0, 600),
-            model: st.settings.engine === "ollama" ? st.settings.ollamaModel : "manual-terminal",
+            model: st.settings.engine === "veylaro" ? st.settings.engineModel : "manual-terminal",
           });
         }
       }
@@ -1248,7 +1261,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setSt((p) => ({ ...p, sideChat: [...(p.sideChat || []), you].slice(-60) }));
       const respond = (reply: string) =>
         setSt((p) => ({ ...p, sideChat: [...(p.sideChat || []), { id: uid(), role: "laro" as const, text: reply, ts: Date.now() }].slice(-60) }));
-      if (st.settings.engine === "ollama") {
+      if (st.settings.engine === "veylaro") {
         (async () => {
           try {
             let acc = "";
@@ -1258,8 +1271,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               role: (m.role === "laro" ? "assistant" : "user") as "assistant" | "user",
               content: m.text,
             }));
-            for await (const part of ollamaChat(
-              st.settings.ollamaUrl, st.settings.ollamaModel,
+            for await (const part of veylaroChat(
+              st.settings.engineUrl, st.settings.engineModel,
               [{ role: "system", content: laroContext(ramGB) + "\n\n" + LARO_SIDE_CHARTER },
                ...history,
                { role: "user", content: t }],

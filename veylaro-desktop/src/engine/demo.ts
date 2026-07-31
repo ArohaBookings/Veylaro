@@ -4,7 +4,7 @@ import { AgentEvent, ModelId, PermMode, Question, SubAgentLane, WebResult } from
    DemoBrain — generates a believable agentic run as a timed
    event script. This is the stand-in engine that exercises the
    full UI until the real Laro weights are wired in via the
-   Ollama adapter (engine/ollama.ts).
+   the Veylaro engine adapter (engine/veylaro.ts).
    ============================================================ */
 
 export interface TimedEvent {

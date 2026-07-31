@@ -98,9 +98,9 @@ function Shell() {
             ✓ saved {new Date(lastSaved).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
           <span className="dot-live" /> local ·{" "}
-          {settings.engine === "ollama" && liveModel
+          {settings.engine === "veylaro" && liveModel
             ? `live weights · ${liveModel.replace(/:latest$/, "")}`
-            : settings.engine === "ollama"
+            : settings.engine === "veylaro"
               ? "live engine (model offline)"
               : "preview brain"}
         </span>

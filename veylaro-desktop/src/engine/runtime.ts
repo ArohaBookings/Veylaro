@@ -1,8 +1,8 @@
 /* ============================================================
    Live inference adapter — Veylaro Code's real engine.
-   Talks to the local Ollama server; the shipped model identity
+   Talks to the local the Veylaro engine server; the shipped model identity
    is "veylaro-code" (see model/Modelfile.veylaro-code — fully
-   plug-and-play: retrain the base, re-run `ollama create`, done).
+   plug-and-play: retrain the base, re-run `veylaro create`, done).
 
    Speed tuning:
    - think:false        Gemma4 spends its whole budget in the hidden
@@ -32,13 +32,13 @@ function optsFor(sku: ModelId) {
 type RuntimeOverrides = Partial<ReturnType<typeof optsFor>>;
 
 /** Preferred shipped model names per tier, best first. The tier's own
-    ollamaTag wins; the legacy names keep older installs working. */
+    modelTag wins; the legacy names keep older installs working. */
 export function modelPreference(sku: ModelId): string[] {
-  return [TIER_BY_ID[sku].ollamaTag, `veylaro-${sku}`, "veylaro-code", "veylaro"];
+  return [TIER_BY_ID[sku].modelTag, `veylaro-${sku}`, "veylaro-code", "veylaro"];
 }
 const MODEL_PREFERENCE = ["laro-med", "laro-max", "laro-lite", "veylaro-code", "veylaro"];
 
-export async function ollamaAlive(url: string): Promise<boolean> {
+export async function engineAlive(url: string): Promise<boolean> {
   try {
     const res = await fetch(`${url.replace(/\/$/, "")}/api/tags`, { signal: AbortSignal.timeout(2500) });
     return res.ok;
@@ -103,7 +103,7 @@ export type StreamChunk = { type: "think" | "text"; chunk: string };
  * channel is streamed too (type "think") before the answer — the
  * frontier-style visible reasoning. Off = maximum speed.
  */
-export async function* ollamaChat(
+export async function* veylaroChat(
   url: string,
   model: string,
   messages: ChatMsg[],

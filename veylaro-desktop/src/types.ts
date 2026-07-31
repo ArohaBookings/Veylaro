@@ -4,7 +4,7 @@ export type ModelId = "lite" | "med" | "max";
 export type PermMode = "ask" | "edits" | "bypass";
 export type Plan = "free" | "pro" | "team";
 export type LangPref = "both" | "plain" | "dev";
-export type EngineKind = "demo" | "ollama";
+export type EngineKind = "demo" | "veylaro";
 
 /** Mirrors Stripe subscription.status. Drives access with grace so a single
     failed charge never cuts someone off mid-work. */
@@ -44,8 +44,8 @@ export interface Settings {
   personality: boolean; // self-talk while working
   sounds: boolean;
   engine: EngineKind;
-  ollamaUrl: string;
-  ollamaModel: string;
+  engineUrl: string;
+  engineModel: string;
   internet: boolean; // web search toggle (only works when online)
   planMode: boolean; // present a plan and wait for approval before acting
   subAgents: SubAgentPref; // auto = 3 lanes on 16GB+ machines, else 2

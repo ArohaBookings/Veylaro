@@ -10,8 +10,8 @@ import type { ModelId } from "../types";
    ratchet) ships on EVERY tier — that is what lets Lite punch
    far above its parameter count.
 
-   Nothing here loads a model. `ollamaTag` is the name the app
-   asks Ollama for once the weights are installed; until then the
+   Nothing here loads a model. `modelTag` is the name the app
+   asks the Veylaro engine for once the weights are installed; until then the
    app runs the preview engine and every screen still works.
    ============================================================ */
 
@@ -49,8 +49,8 @@ export interface TierProfile {
   paramsB: number;
   diskGB: number;
   contextTokens: number;
-  /** Ollama model name once the weights are installed. */
-  ollamaTag: string;
+  /** the Veylaro engine model name once the weights are installed. */
+  modelTag: string;
   /** Runtime tuning — smaller budgets on small machines keep it snappy. */
   runtime: {
     numPredict: number;
@@ -71,7 +71,7 @@ export const SYSTEM_TIERS: TierProfile[] = [
     paramsB: 4,
     diskGB: 2.6,
     contextTokens: 16384,
-    ollamaTag: "laro-lite",
+    modelTag: "laro-lite",
     runtime: { numPredict: 768, numCtx: 8192, keepAlive: "20m", temperature: 0.0 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
@@ -92,7 +92,7 @@ export const SYSTEM_TIERS: TierProfile[] = [
     paramsB: 12,
     diskGB: 7.6,
     contextTokens: 16384,
-    ollamaTag: "laro-med",
+    modelTag: "laro-med",
     runtime: { numPredict: 1536, numCtx: 16384, keepAlive: "20m", temperature: 0.0 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
@@ -113,7 +113,7 @@ export const SYSTEM_TIERS: TierProfile[] = [
     paramsB: 24,
     diskGB: 14,
     contextTokens: 32768,
-    ollamaTag: "laro-max",
+    modelTag: "laro-max",
     runtime: { numPredict: 2048, numCtx: 32768, keepAlive: "20m", temperature: 0.0 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
