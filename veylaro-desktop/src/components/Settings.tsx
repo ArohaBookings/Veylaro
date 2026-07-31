@@ -8,6 +8,7 @@ import {
   exportVerifiedPrecedents,
   verifiedPrecedentCount,
 } from "../engine/localLearning";
+import { decide, DEFAULT_LEARN_CONFIG, LearnStatus, Power } from "../engine/overnightScheduler";
 import { Bolt, Check, Clock, Cpu, Eye, Globe, Lock, Shield, Sparkle, TerminalIc, User, Warn, X } from "./icons";
 
 /* ============================================================
@@ -375,6 +376,57 @@ function ReferralsPage() {
   );
 }
 
+/* Live progress panel — reads the real power/idle state and runs it through the
+   same decide() the scheduler uses, so it shows exactly why Laro is or isn't
+   consolidating right now. No fake activity: if it says "learning", the gates
+   are genuinely open. */
+const STATUS_UI: Record<LearnStatus, { label: string; tone: string; note: string }> = {
+  off: { label: "Off", tone: "dim", note: "Overnight learning is switched off." },
+  learning: { label: "Consolidating now", tone: "green", note: "Idle, on power, past the cool-down — Laro is folding in your verified wins." },
+  "paused-active": { label: "Paused — you're here", tone: "amber", note: "You're using the machine. Laro stops the instant you touch it, and waits an hour after." },
+  "paused-battery": { label: "Paused — on battery", tone: "amber", note: "Set to power-only. It'll resume when you plug in." },
+  cooldown: { label: "Cooling down", tone: "amber", note: "Within the 1-hour quiet window after your last activity." },
+  "idle-waiting": { label: "Waiting for idle", tone: "dim", note: "Enabled and on power — it starts once you've been away a few minutes." },
+};
+
+function OvernightProgress({ count }: { count: number }) {
+  const { settings } = useStore();
+  const [power, setPower] = useState<Power | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const read = () => window.veylaro?.powerState?.().then((p) => alive && setPower(p)).catch(() => {});
+    read();
+    const t = setInterval(read, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+  const cfg = {
+    ...DEFAULT_LEARN_CONFIG,
+    enabled: settings.overnight,
+    onlyWhenPlugged: settings.overnightOnlyWhenPlugged,
+  };
+  const p: Power = power || { idleSec: 0, onBattery: false, ok: false };
+  const d = decide(cfg, p, "off", 0, Date.now());
+  const ui = STATUS_UI[d.status];
+  return (
+    <div className={`learn-panel ${ui.tone}`}>
+      <div className="lp-head">
+        <span className={`lp-dot ${ui.tone}`} />
+        <b>{ui.label}</b>
+        {power?.ok && (
+          <span className="lp-power">
+            {power.onBattery ? "on battery" : "plugged in"} · idle {Math.floor(power.idleSec / 60)}m {Math.floor(power.idleSec % 60)}s
+          </span>
+        )}
+      </div>
+      <p className="lp-note">{ui.note}</p>
+      <div className="lp-stats">
+        <span><b>{count}</b> verified precedent{count === 1 ? "" : "s"} banked</span>
+        <span>{settings.overnightIntensity === "gentle" ? "Gentle" : "Normal"} review budget</span>
+      </div>
+    </div>
+  );
+}
+
 function LearningPage() {
   const { settings, setSettings, liveModel } = useStore();
   const [count, setCount] = useState(() => verifiedPrecedentCount());
@@ -385,6 +437,7 @@ function LearningPage() {
   };
   return (
     <>
+      <OvernightProgress count={count} />
       <Toggle on={settings.overnight} onChange={(v) => setSettings({ overnight: v })}
         title="Use private verified learning" sub="Save only locally observed passing checks, then retrieve relevant precedents on future work. Off by default." />
       <Toggle on={settings.overnightOnlyWhenPlugged} onChange={(v) => setSettings({ overnightOnlyWhenPlugged: v })}

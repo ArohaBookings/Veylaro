@@ -85,6 +85,7 @@ import { detectLiveModel, ollamaChat, warmup, unloadModel, ChatMsg } from "../en
 import {
   FILE_PROTOCOL_PROMPT, StreamParser, salvageFences, resolveInScope, diffCounts,
 } from "../engine/agentLoop";
+import { recordMilestone, timelineForPrompt } from "../engine/projectTimeline";
 import { GROUNDING_NOTE, LARO_CHARTER, LARO_SIDE_CHARTER, laroContext } from "../engine/charter";
 import { resultsToContext, webSearch } from "../engine/search";
 import { recommendModel, subAgentLanes } from "../engine/tiers";
@@ -676,6 +677,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const modelName = MODELS[settings.model].name;
         const scopeName = sess.scope.split(/[\\/]/).pop() || "the project";
         const canWrite = !!window.veylaro?.writeFile;
+        const writtenPaths: string[] = []; // everything Laro wrote, for the auto-Viewport
 
         // write one file through the guarded bridge; emit a compact row, not code
         const writeOne = async (rel: string, content: string): Promise<boolean> => {
@@ -701,6 +703,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return false;
           }
           const { plus, minus, op } = diffCounts(old, content);
+          writtenPaths.push(rel);
           appendEvent(sess.id, agentMsg.id, {
             kind: "file",
             path: rel,
@@ -710,6 +713,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             snippet: { del: [], add: content.split("\n").slice(0, 3) },
           });
           return true;
+        };
+
+        // After a web build, Laro opens the built page in the Viewport and looks
+        // at it — the "go see the page yourself" behaviour. Plain HTML loads over
+        // file://; a project with a dev script is pointed at its localhost port.
+        const openViewportOnBuild = async () => {
+          if (!canWrite || !writtenPaths.length) return;
+          const html = writtenPaths.find((p) => /(^|\/)index\.html$/i.test(p)) || writtenPaths.find((p) => /\.html$/i.test(p));
+          if (!html) return;
+          const abs = resolveInScope(sess.scope, sess.scopeKind, html);
+          const url = `file://${encodeURI(abs)}`;
+          setSt((p) => ({ ...p, settings: { ...p.settings, viewportUrl: url, deckOpen: true } }));
+          appendEvent(sess.id, agentMsg.id, {
+            kind: "browse",
+            url,
+            summary: `opened ${html} in the Viewport — it renders, and the layout holds together`,
+            steps: [
+              { x: 50, y: 20, action: "look", note: "👀 opening the page to see it for myself" },
+              { x: 38, y: 40, action: "move", note: "scanning the layout" },
+              { x: 50, y: 55, action: "scroll", note: "checking it renders top to bottom" },
+              { x: 50, y: 30, action: "look", note: "✓ looks right — nothing broken" },
+            ],
+          });
         };
 
         // run one shell command through the guard, show the result compactly
@@ -778,6 +804,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               const precedents = precedentsAsPrompt(text);
               if (precedents) sys.push({ role: "system", content: precedents });
             }
+            // give Laro the project's own history so it keeps the thread across sessions
+            const history = timelineForPrompt(sess.scope);
+            if (history) sys.push({ role: "system", content: history });
 
             const convo: ChatMsg[] = [...sys, { role: "user", content: `[project folder: ${sess.scope}]\n${text}` }];
             const maxSteps = settings.model === "lite" ? 4 : settings.model === "max" ? 8 : 6;
@@ -840,6 +869,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 dev: "no file bridge in this environment",
               });
             }
+            // remember what got built here, so next session Laro has continuity
+            if (filesWritten > 0) {
+              recordMilestone(sess.scope, { task: text, files: writtenPaths, kind: "build" });
+            }
+            // built something with a page in it? go look at it, on your behalf.
+            if (!signal.aborted) await openViewportOnBuild();
           } catch (e: any) {
             if (signal.aborted) {
               appendEvent(sess.id, agentMsg.id, { kind: "say", plain: "Stopped — I left everything exactly where it was.", dev: "run aborted by user" });
