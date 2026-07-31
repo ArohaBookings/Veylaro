@@ -114,6 +114,25 @@ export const UI_AUDIT_JS = `(() => {
   // composition: is content in a constrained, centred container?
   const wide = all.filter(e=>{ const cs=getComputedStyle(e); return e.offsetWidth>vw*0.9 && cs.maxWidth!=='none' && parseFloat(cs.maxWidth)>0; });
   if (vw>=900 && wide.length===0) add('layout','med','no max-width container — content sprawls full-bleed. Constrain the main column and centre it.');
+
+  // DEAD SPACE — the thing a designer's eye catches that contrast maths can't:
+  // sample a grid over the first screen; if a big chunk is empty, the composition
+  // is thin (the classic "dark hero + text left + empty right" AI template).
+  const foldH = Math.min(document.body.scrollHeight || window.innerHeight, window.innerHeight);
+  const gw=12, gh=8; let empty=0, cells=0;
+  for (let r=0;r<gh;r++) for (let c=0;c<gw;c++) {
+    cells++; const x=(c+0.5)*vw/gw, y=(r+0.5)*foldH/gh; const el=document.elementFromPoint(x,y);
+    if (!el || el===document.body || el===document.documentElement) { empty++; continue; }
+    // Real CONTENT only — decorative section backgrounds (gradients/colours) don't
+    // count. A big region whose only "styling" is a background is visually empty.
+    const directText = [...el.childNodes].some(n => n.nodeType===3 && n.textContent.trim().length>0);
+    const media = /^(IMG|SVG|CANVAS|VIDEO|PICTURE)$/.test(el.tagName);
+    const isCard = (getComputedStyle(el).boxShadow||'none')!=='none' && el.offsetWidth < vw*0.7;
+    if (!directText && !media && !isCard) empty += 1;
+  }
+  const emptyPct = empty/cells;
+  if (emptyPct > 0.62) add('composition','high',\`~\${Math.round(emptyPct*100)}% of the first screen has no real content — the composition is thin (the generic "text on the left, empty space on the right" template). Fill it with intent: a product mockup, a real graphic, or a balanced layout. Dead space reads as unfinished.\`);
+  else if (emptyPct > 0.5) add('composition','med',\`~\${Math.round(emptyPct*100)}% of the first screen is empty of content — add a supporting visual or tighten the composition so it feels designed, not sparse\`);
   if (!transition && document.querySelector('button,a')) add('polish','low','no transitions — buttons/links snap with no hover feel; add subtle transitions');
 
   /* ---------- score: high bar. Floor failures cap it low. ---------- */
