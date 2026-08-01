@@ -18,7 +18,8 @@
     "dist:local": "VEYLARO_LOCAL_ADHOC=1 vite build && electron-builder --mac zip --publish never",
     "dist:win": "node build/releasePreflight.cjs && vite build && electron-builder --win --publish never",
     "dist:all": "node build/releasePreflight.cjs && vite build && electron-builder --mac zip --win --publish never",
-    "cli": "node cli/veylaro.cjs"
+    "cli": "node cli/veylaro.cjs",
+    "mcp": "tsx mcp/veylaro-code.mts"
   },
   "dependencies": {
     "react": "^18.3.1",
