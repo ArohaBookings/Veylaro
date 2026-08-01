@@ -105,7 +105,7 @@ const FAQS = [
   },
   {
     q: "What hardware do I need?",
-    a: "Laro Lite needs 4 GB RAM and is recommended at 8 GB. Laro Med needs 12 GB and is recommended at 16 GB. Laro Max needs 24 GB and is recommended at 32 GB. Veylaro selects conservatively so the app stays responsive.",
+    a: "Laro Lite needs 8 GB RAM. Laro Med needs 12 GB and is recommended at 16 GB. Laro Max needs 24 GB and is recommended at 32 GB. Veylaro selects conservatively so the app stays responsive.",
   },
   {
     q: "Does my code or my prompts ever leave my machine?",

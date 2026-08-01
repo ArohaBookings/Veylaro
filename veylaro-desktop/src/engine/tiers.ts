@@ -66,10 +66,10 @@ export const SYSTEM_TIERS: TierProfile[] = [
     id: "lite",
     name: "Laro Lite",
     tagline: "Runs on almost anything. Still a real engineer.",
-    minRamGB: 4,
+    minRamGB: 8,
     recommendedRamGB: 8,
     paramsB: 4,
-    diskGB: 2.6,
+    diskGB: 3.6,
     contextTokens: 16384,
     modelTag: "laro-lite",
     runtime: { numPredict: 768, numCtx: 8192, keepAlive: "20m", temperature: 0.0 },
@@ -164,7 +164,7 @@ export function recommendedName(ramGB: number): string {
 export function fitCheck(model: CapabilityTier, ramGB: number): FitResult {
   const t = TIER_BY_ID[model];
   if (ramGB >= t.recommendedRamGB)
-    return { status: "great", note: `${ramGB} GB runs ${t.name} comfortably — expect it to feel instant.` };
+    return { status: "great", note: `${ramGB} GB runs ${t.name} comfortably. Cold load still takes a moment; warm turns are the fast path.` };
   if (ramGB >= t.minRamGB + 2)
     return { status: "ok", note: `${ramGB} GB runs ${t.name} well. Close a couple of browser tabs on big jobs.` };
   if (ramGB >= t.minRamGB)

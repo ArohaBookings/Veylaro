@@ -12,12 +12,12 @@ export function Benchmarks() {
           <Reveal>
             <span className="eyebrow"><span className="dot" />Benchmarks</span>
             <h1 className="h-display" style={{ fontSize: "clamp(40px, 6vw, 76px)" }}>
-              90.9% on HumanEval.<br /><span className="grad-text">On a laptop. Offline.</span>
+              Evidence follows the artifact.<br /><span className="grad-text">No inherited scores.</span>
             </h1>
             <p className="lede">
-              Laro Med solved 149 of 164 — every line executed, incomplete output counted as a
-              failure. That lands it between GPT-4o (90.2%) and Claude 3.5 Sonnet (92%) on the same
-              benchmark, running offline on a 16 GB laptop. No API. No data leaving the machine.
+              Earlier Gemma-based research runs remain auditable, but the current Lite, Med, and Max
+              release artifacts stay unscored until each exact bundle completes the same executable
+              harness. That is less marketable than a projection and substantially more useful.
             </p>
           </Reveal>
         </div>
@@ -29,10 +29,8 @@ export function Benchmarks() {
             <GlowCard style={{ padding: "42px 38px" }}>
               <BenchmarkChart />
               <p className="footnote" style={{ marginTop: 30 }}>
-                Higher is better. Laro bars are executed locally on a 16 GB Mac; competitor bars are
-                each lab's last officially published HumanEval on their own harness (sources linked).
-                The newest frontier models no longer publish HumanEval, so their most recent published
-                score is used — no invented numbers.
+                A pending score is not zero and it is not an estimate. It means the exact release
+                artifact has not yet produced reproducible task-level evidence on supported hardware.
               </p>
             </GlowCard>
           </Reveal>
@@ -125,20 +123,21 @@ export function Benchmarks() {
             <span className="eyebrow"><span className="dot" />Methodology</span>
             <h2 className="h-lg">Measured, not marketed.</h2>
             <p className="lede" style={{ marginTop: 14, fontSize: 16 }}>
-              We run the standard HumanEval set: all 164 problems, generated code executed,
-              thinking off, and incomplete output scored as failure. Raw local artifacts retain
-              task-level results for HumanEval. Scores stay tied to the exact artifact that produced
-              them; an installed preview model does not inherit a different model's result.
+              The release gate requires generated code to execute, incomplete output to count as a
+              failure, and every result to retain model, runtime, evaluator, and artifact identity.
+              Historical HumanEval runs satisfy only part of that lineage, so they remain research
+              records and are not presented as current Laro capability.
             </p>
           </Reveal>
           <Reveal variant="from-right" delay={120}>
             <GlowCard>
               <h3 style={{ marginBottom: 14 }}>How we label every number</h3>
               <ul className="bench-legend">
-                <li><b>Measured</b> — we ran it here, on this hardware, and the raw output is on disk. Only these get quoted as a Laro result.</li>
+                <li><b>Measured</b> — the exact release artifact ran here and the raw task-level output is retained. Only this can become a Laro result.</li>
                 <li><b>Vendor</b> — the lab's own published figure on their own harness.</li>
                 <li><b>Not published</b> — no number exists we can cite. It stays blank rather than guessed.</li>
-                <li><b>Pending</b> — we intend to measure it and haven't yet. Laro Max is here: it needs 24 GB and our test box has 16.</li>
+                <li><b>Historical</b> — a different checkpoint or runtime was measured. It informs engineering but is not inherited by a release tier.</li>
+                <li><b>Pending</b> — the release artifact has not yet completed the required run. All three current tiers are here.</li>
               </ul>
             </GlowCard>
           </Reveal>

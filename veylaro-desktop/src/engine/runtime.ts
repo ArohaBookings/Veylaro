@@ -1,15 +1,15 @@
 /* ============================================================
    Live inference adapter — Veylaro Code's real engine.
-   Talks to the local the Veylaro engine server; the shipped model identity
-   is "veylaro-code" (see model/Modelfile.veylaro-code — fully
-   plug-and-play: retrain the base, re-run `veylaro create`, done).
+   Talks to the local Veylaro engine server. Each product tier is selected
+   from an explicit checkpoint family; the runtime never relabels one tier
+   as another or silently falls back to an unrelated installed model.
 
    Speed tuning:
    - think:false        Gemma4 spends its whole budget in the hidden
                         thinking channel otherwise (empty replies).
-   - keep_alive 30m     weights stay hot between messages → no reload.
-   - warmup()           pre-loads the model at app start so the first
-                        real message streams instantly.
+   - lazy start         the desktop starts MLX only on the first request.
+   - keep warm          weights stay hot between active messages.
+   - idle stop          the renderer releases the owned engine after idle.
    - num_predict 1024   snappy ceilings; temperature 0.3 for precision.
    ============================================================ */
 
@@ -29,36 +29,101 @@ function optsFor(sku: ModelId) {
   return { temperature: rt.temperature, num_predict: rt.numPredict, num_ctx: rt.numCtx, top_p: 0.9 };
 }
 
-type RuntimeOverrides = Partial<ReturnType<typeof optsFor>>;
+type RuntimeOverrides = Partial<ReturnType<typeof optsFor>> & { seed?: number };
+
+export interface EngineReady {
+  ok: boolean;
+  url: string;
+  provider?: string;
+  model?: string;
+  tier?: ModelId;
+  started?: boolean;
+  error?: string;
+}
+
+type Discovery = { provider: "openai"; models: string[] };
+
+export function tierFromModelName(model: string): ModelId | undefined {
+  const value = model.toLowerCase();
+  if (/(?:laro|veylaro)[-_ ]?max|(?:^|[-_/ ])24b(?:$|[-_/ ])/i.test(value)) return "max";
+  if (/(?:laro|veylaro)[-_ ]?med|(?:^|[-_/ ])12b(?:$|[-_/ ])/i.test(value)) return "med";
+  if (/(?:laro|veylaro)[-_ ]?lite|gemma-4-e2b|(?:^|[-_/ ])4b(?:$|[-_/ ])/i.test(value)) return "lite";
+  return undefined;
+}
+
+export function selectInstalledModel(models: string[], preferred: string, sku: ModelId): string {
+  const exact = models.find((model) => model === preferred || model.replace(/:latest$/, "") === preferred.replace(/:latest$/, ""));
+  if (exact && tierFromModelName(exact) === sku) return exact;
+  for (const wanted of modelPreference(sku)) {
+    const hit = models.find((model) => model === wanted || model.startsWith(`${wanted}:`));
+    if (hit && tierFromModelName(hit) === sku) return hit;
+  }
+  return "";
+}
+
+async function discover(url: string, timeout = 2500): Promise<Discovery | null> {
+  const base = url.replace(/\/$/, "");
+  try {
+    const res = await fetch(`${base}/v1/models`, { signal: AbortSignal.timeout(timeout) });
+    if (res.ok) {
+      const body = await res.json();
+      return { provider: "openai", models: (body?.data || []).map((item: any) => String(item?.id || "")).filter(Boolean) };
+    }
+  } catch { /* offline */ }
+  return null;
+}
+
+/** Start the app-owned engine on demand. Browser preview builds can only use an
+    already-running endpoint; the desktop bridge owns the real process. */
+export async function ensureLocalEngine(url: string, preferredModel = "", sku: ModelId = "lite"): Promise<EngineReady> {
+  // Desktop readiness is execution-verified in the main process. A model name
+  // in /v1/models is metadata, not proof that its tokenizer and weights work.
+  if (window.veylaro?.engineEnsure) {
+    return window.veylaro.engineEnsure(url, preferredModel, sku);
+  }
+  const already = await discover(url, 900);
+  if (already) {
+    const model = selectInstalledModel(already.models, preferredModel, sku);
+    if (!model) {
+      return { ok: false, url, provider: already.provider, error: `The running endpoint does not provide Laro ${sku}.` };
+    }
+    return { ok: true, url, provider: already.provider, model, tier: model ? tierFromModelName(model) : undefined, started: false };
+  }
+  return { ok: false, url, error: "The local Veylaro engine is not running." };
+}
 
 /** Preferred shipped model names per tier, best first. The tier's own
     modelTag wins; the legacy names keep older installs working. */
 export function modelPreference(sku: ModelId): string[] {
-  return [TIER_BY_ID[sku].modelTag, `veylaro-${sku}`, "veylaro-code", "veylaro"];
+  const aliases = [
+    TIER_BY_ID[sku].modelTag,
+    `veylaro-${sku}`,
+  ];
+  if (sku === "lite") aliases.push("mlx-community/gemma-4-e2b-it-4bit", "mlx-community/gemma-3-text-4b-it-4bit");
+  if (sku === "med") aliases.push("mlx-community/gemma-4-12B-it-4bit", "gemma4:12b");
+  if (sku === "max") aliases.push("mlx-community/Devstral-Small-2-24B-Instruct-2512-OptiQ-4bit", "devstral:24b");
+  return aliases;
 }
-const MODEL_PREFERENCE = ["laro-med", "laro-max", "laro-lite", "veylaro-code", "veylaro"];
+const MODEL_PREFERENCE = [
+  "laro-med", "laro-max", "laro-lite", "veylaro-code", "veylaro",
+  "mlx-community/gemma-4-e2b-it-4bit", "mlx-community/gemma-3-text-4b-it-4bit",
+];
 
 export async function engineAlive(url: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${url.replace(/\/$/, "")}/api/tags`, { signal: AbortSignal.timeout(2500) });
-    return res.ok;
-  } catch {
-    return false;
-  }
+  return !!(await discover(url));
 }
 
 /** Find the best installed Veylaro model, or null if none. */
 export async function detectLiveModel(url: string): Promise<string | null> {
   try {
-    const res = await fetch(`${url.replace(/\/$/, "")}/api/tags`, { signal: AbortSignal.timeout(2500) });
-    if (!res.ok) return null;
-    const j = await res.json();
-    const names: string[] = (j?.models || []).map((m: any) => String(m?.name || ""));
+    const found = await discover(url);
+    if (!found) return null;
+    const names = found.models;
     for (const want of MODEL_PREFERENCE) {
       const hit = names.find((n) => n === want || n.startsWith(`${want}:`));
       if (hit) return hit;
     }
-    return null;
+    return names[0] || null;
   } catch {
     return null;
   }
@@ -70,10 +135,16 @@ export async function detectLiveModel(url: string): Promise<string | null> {
     30-minute memory hang sitting there doing nothing. */
 export async function warmup(url: string, model: string): Promise<void> {
   try {
-    await fetch(`${url.replace(/\/$/, "")}/api/generate`, {
+    await fetch(`${url.replace(/\/$/, "")}/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt: "", stream: false, keep_alive: "10m", options: { num_predict: 1 } }),
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: "Reply only OK." }],
+        stream: false,
+        max_tokens: 2,
+        temperature: 0,
+      }),
       signal: AbortSignal.timeout(120000),
     });
   } catch {
@@ -85,15 +156,13 @@ export async function warmup(url: string, model: string): Promise<void> {
     frees the moment you're done rather than lingering for the keep-alive window. */
 export async function unloadModel(url: string, model: string): Promise<void> {
   try {
-    await fetch(`${url.replace(/\/$/, "")}/api/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt: "", stream: false, keep_alive: 0 }),
-      signal: AbortSignal.timeout(5000),
-    });
-  } catch {
-    /* best effort — if the engine's already gone, nothing to unload */
-  }
+    const stopped = await window.veylaro?.engineStop?.();
+    if (stopped?.stopped) return;
+  } catch { /* external engine: fall through to protocol unload */ }
+  // The OpenAI-compatible local protocol has no standard unload operation.
+  // External runtimes remain under the process owner's control.
+  void url;
+  void model;
 }
 
 export type StreamChunk = { type: "think" | "text"; chunk: string };
@@ -112,16 +181,26 @@ export async function* veylaroChat(
   signal?: AbortSignal,
   overrides: RuntimeOverrides = {}
 ): AsyncGenerator<StreamChunk> {
-  const res = await fetch(`${url.replace(/\/$/, "")}/api/chat`, {
+  const base = url.replace(/\/$/, "");
+  const found = await discover(url, 1800);
+  if (!found) throw new Error("the local engine is not ready");
+  const selectedModel = selectInstalledModel(found.models, model, sku);
+  if (!selectedModel) throw new Error(`the local endpoint does not provide Laro ${sku}`);
+  const res = await fetch(`${base}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model,
+      model: selectedModel,
       messages,
       stream: true,
-      think: reasoning,
-      keep_alive: runtimeFor(sku).keepAlive,
-      options: { ...optsFor(sku), ...overrides },
+      // mlx-lm 0.29.1's continuous BatchRotatingKVCache can corrupt the
+      // second Gemma request when prompt lengths differ. A fixed seed routes
+      // the server through its stable single-sequence generator and also
+      // makes agent retries reproducible.
+      seed: overrides.seed ?? 42,
+      max_tokens: overrides.num_predict ?? optsFor(sku).num_predict,
+      temperature: overrides.temperature ?? optsFor(sku).temperature,
+      top_p: overrides.top_p ?? optsFor(sku).top_p,
     }),
     signal,
   });
@@ -138,12 +217,14 @@ export async function* veylaroChat(
     for (const line of lines) {
       if (!line.trim()) continue;
       try {
-        const j = JSON.parse(line);
-        const think = j?.message?.thinking;
+        const payload = line.startsWith("data:") ? line.slice(5).trim() : line;
+        if (!payload || payload === "[DONE]") return;
+        const j = JSON.parse(payload);
+        const think = j?.choices?.[0]?.delta?.reasoning_content || j?.choices?.[0]?.delta?.reasoning;
         if (think) yield { type: "think", chunk: think };
-        const chunk = j?.message?.content;
+        const chunk = j?.choices?.[0]?.delta?.content;
         if (chunk) yield { type: "text", chunk };
-        if (j?.done) return;
+        if (j?.choices?.[0]?.finish_reason) return;
       } catch {
         /* partial line — keep buffering */
       }

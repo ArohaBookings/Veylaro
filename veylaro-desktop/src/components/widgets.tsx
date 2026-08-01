@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { FREE_WEEKLY_LIMIT, MODELS, ModelId } from "../types";
-import { tokenSpeed } from "../engine/demo";
 import { Checkpoint } from "../types";
 import { Bolt, Rewind, Shield, Wifi0 } from "./icons";
 
@@ -62,7 +61,7 @@ export function ModelSlider() {
       {toast && (
         <div className="swap-toast">
           <span>
-            Swapping weights → <b style={{ color: "var(--text)" }}>{MODELS[toast].name}</b> · {MODELS[toast].disk} mapped
+            Selected <b style={{ color: "var(--text)" }}>{MODELS[toast].name}</b> · {MODELS[toast].disk} package
           </span>
           <span className="bar"><i /></span>
         </div>
@@ -71,14 +70,11 @@ export function ModelSlider() {
   );
 }
 
-/* ============ Privacy HUD — proof it's local ============ */
+/* ============ Local engine and network status ============ */
 
 export function PrivacyHud() {
-  const { running, settings } = useStore();
-  const [tps, setTps] = useState(0);
-  const [ram, setRam] = useState(4.2);
+  const { liveModel, running, settings } = useStore();
   const [online, setOnline] = useState(navigator.onLine);
-  const [saved, setSaved] = useState(() => Number(localStorage.getItem("veylaro.saved") || 0));
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -91,30 +87,25 @@ export function PrivacyHud() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!running) {
-      setTps(0);
-      return;
-    }
-    const t = setInterval(() => {
-      setTps(tokenSpeed(settings.model));
-      setRam((r) => Math.min(settings.model === "max" ? 9.6 : 4.4, Math.max(3.2, r + (Math.random() - 0.45))));
-      setSaved((s) => {
-        const n = +(s + Math.random() * 0.03).toFixed(2);
-        localStorage.setItem("veylaro.saved", String(n));
-        return n;
-      });
-    }, 700);
-    return () => clearInterval(t);
-  }, [running, settings.model]);
+  const localModelActive = settings.engine === "veylaro" && Boolean(liveModel);
+  const engineLabel = localModelActive
+    ? "Local model active"
+    : settings.engine === "demo"
+      ? "Preview mode"
+      : "Local model not detected";
+  const networkLabel = !online
+    ? "Offline · web search unavailable"
+    : settings.internet
+      ? "Web search on · queries use the internet"
+      : "Web search off";
 
   return (
-    <div className="hud" aria-label="Privacy and performance">
-      <span className="cell ok"><Shield size={12} /> <b>0 bytes</b> to the cloud</span>
-      <span className="cell"><Bolt size={12} /> <b>{running ? tps : "—"}</b> tok/s</span>
-      <span className="cell"><b>{ram.toFixed(1)} GB</b> RAM</span>
-      <span className="cell"><b>${saved.toFixed(2)}</b> saved vs cloud</span>
-      {!online && <span className="cell off"><Wifi0 size={12} /> offline — still fully working</span>}
+    <div className="hud" aria-label="Local engine and network status">
+      <span className={`cell ${localModelActive ? "ok" : ""}`}><Shield size={12} /> <b>{engineLabel}</b></span>
+      <span className="cell"><Bolt size={12} /> <b>{running ? "Working" : "Idle"}</b></span>
+      <span className={`cell ${!online ? "off" : ""}`}>
+        {!online && <Wifi0 size={12} />} <b>{networkLabel}</b>
+      </span>
     </div>
   );
 }

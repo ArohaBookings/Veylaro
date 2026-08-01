@@ -7,11 +7,11 @@ const TIERS = [
   {
     name: "Laro Lite",
     params: "4B",
-    disk: "2.6 GB",
-    floor: "4 GB minimum · 8 GB recommended",
-    score: "68.9% HumanEval",
-    mbpp: "51.0% MBPP",
-    evidence: "Measured · 113/164 · 51/100",
+    disk: "3.6 GB",
+    floor: "8 GB minimum and recommended",
+    score: "Release benchmark pending",
+    mbpp: "Historical base results are not inherited",
+    evidence: "Current Gemma 4 E2B artifact not yet run on HumanEval or MBPP",
     icon: <Gauge size={22} />,
   },
   {
@@ -19,9 +19,9 @@ const TIERS = [
     params: "12B",
     disk: "7.6 GB",
     floor: "12 GB minimum · 16 GB recommended",
-    score: "90.9% HumanEval",
-    mbpp: "72.0% MBPP",
-    evidence: "Measured · 149/164 · 72/100",
+    score: "Release benchmark pending",
+    mbpp: "Historical Ollama results are not inherited",
+    evidence: "Current independent MLX artifact not yet executed on this host",
     icon: <Sparkle size={22} />,
     featured: true,
   },
@@ -124,11 +124,11 @@ export function MeetLaro() {
         <div className="container split meet-proof">
           <Reveal variant="from-left">
             <span className="eyebrow"><span className="dot" />What is measured</span>
-            <h2 className="h-lg">Two benchmarks,<br />run the honest way.</h2>
+            <h2 className="h-lg">Every release score<br />must follow the artifact.</h2>
             <p className="lede">
-              Every figure below is pass@1 with the generated code actually executed against the real
-              tests, on our own hardware. A truncated answer counts as a failure. Frontier scores are each
-              lab's own published number — see the full breakdown on the benchmarks page.
+              Historical research runs remain available for audit, but they are not assigned to a renamed,
+              requantized, or newly packaged model. Each released tier needs its own executable report,
+              immutable artifact hash, and clean-machine reproduction before it receives a public score.
             </p>
             <div className="meet-actions">
               <Link to="/benchmarks" className="btn ghost lg">See the full chart <ArrowRight size={16} /></Link>
@@ -136,12 +136,10 @@ export function MeetLaro() {
           </Reveal>
           <Reveal variant="from-right">
             <GlowCard className="proof-card">
-              <div><Check size={17} /><span><b>Laro Med</b> — 90.9% HumanEval (149/164)</span></div>
-              <div><Check size={17} /><span><b>Laro Med</b> — 72.0% MBPP (72/100)</span></div>
-              <div><Check size={17} /><span><b>Laro Lite</b> — 68.9% HumanEval (113/164)</span></div>
-              <div><Check size={17} /><span><b>Laro Lite</b> — 51.0% MBPP (51/100)</span></div>
-              <div><Brain size={17} /><span><b>Laro Max</b> — awaiting a machine with the memory to run it</span></div>
-              <div><Shield size={17} /><span>Harness ships in the app — re-run every number yourself</span></div>
+              <div><Check size={17} /><span><b>Laro Lite</b> — runtime and tier isolation verified; release benchmark pending</span></div>
+              <div><Check size={17} /><span><b>Laro Med</b> — configuration verified; independent checkpoint unavailable on this host</span></div>
+              <div><Brain size={17} /><span><b>Laro Max</b> — configuration verified; requires at least 24 GB RAM</span></div>
+              <div><Shield size={17} /><span>No tier inherits a score from a different checkpoint, runtime, or alias</span></div>
             </GlowCard>
           </Reveal>
         </div>

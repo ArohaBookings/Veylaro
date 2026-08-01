@@ -22,11 +22,11 @@ const fs = require("fs");
 const readline = require("readline");
 const { execSync } = require("child_process");
 
-const OLLAMA = process.env.VEYLARO_HOST || "http://127.0.0.1:11434";
+const ENGINE = process.env.VEYLARO_HOST || "http://127.0.0.1:8080";
 const TIERS = [
-  { id: "lite", name: "Laro Lite", tag: "laro-lite", minRam: 4, params: "4B" },
-  { id: "med", name: "Laro Med", tag: "laro-med", minRam: 12, params: "12B" },
-  { id: "max", name: "Laro Max", tag: "laro-max", minRam: 24, params: "24B" },
+  { id: "lite", name: "Laro Lite", minRam: 8, params: "4B" },
+  { id: "med", name: "Laro Med", minRam: 12, params: "12B" },
+  { id: "max", name: "Laro Max", minRam: 24, params: "24B" },
 ];
 
 /* ---- the look ---- */
@@ -66,15 +66,23 @@ function thinking(label) {
 }
 
 /* ---- talking to the model ---- */
-async function tags() {
+async function models() {
   try {
-    const r = await fetch(`${OLLAMA}/api/tags`, { signal: AbortSignal.timeout(2500) });
+    const r = await fetch(`${ENGINE.replace(/\/$/, "")}/v1/models`, { signal: AbortSignal.timeout(2500) });
     if (!r.ok) return null;
     const j = await r.json();
-    return (j.models || []).map((m) => String(m.name || ""));
+    return (j.data || []).map((item) => String(item?.id || "")).filter(Boolean);
   } catch {
     return null;
   }
+}
+
+function tierOf(model) {
+  const value = String(model || "").toLowerCase();
+  if (/(?:laro|veylaro)[-_ ]?max|(?:^|[-_/ ])24b(?:$|[-_/ ])/i.test(value)) return "max";
+  if (/(?:laro|veylaro)[-_ ]?med|(?:^|[-_/ ])12b(?:$|[-_/ ])/i.test(value)) return "med";
+  if (/(?:laro|veylaro)[-_ ]?lite|gemma-4-e2b|gemma-3.*4b|(?:^|[-_/ ])4b(?:$|[-_/ ])/i.test(value)) return "lite";
+  return null;
 }
 
 function ramGB() {
@@ -85,11 +93,10 @@ function bestTier(installed) {
   const ram = ramGB();
   const fits = TIERS.filter((t) => ram >= t.minRam);
   for (let i = fits.length - 1; i >= 0; i--) {
-    const hit = (installed || []).find((n) => n === fits[i].tag || n.startsWith(fits[i].tag + ":"));
+    const hit = (installed || []).find((name) => tierOf(name) === fits[i].id);
     if (hit) return { tier: fits[i], model: hit };
   }
-  const anyLaro = (installed || []).find((n) => /^(laro|veylaro)/.test(n));
-  return anyLaro ? { tier: fits[fits.length - 1] || TIERS[0], model: anyLaro } : null;
+  return null;
 }
 
 const CHARTER = `You are Laro, running in the user's terminal. Lead with the answer, no preamble. Say "I don't know" rather than guessing. Never claim you ran or verified something you didn't. Finish the whole job, don't stop halfway. Dry humour welcome. Be honest about risk once, then help them build it.`;
@@ -102,10 +109,11 @@ async function ask(model, prompt, cwd) {
       { role: "user", content: prompt },
     ],
     stream: true,
-    think: false,
-    keep_alive: "30m",
+    seed: 42,
+    temperature: 0,
+    max_tokens: 768,
   };
-  const res = await fetch(`${OLLAMA}/api/chat`, {
+  const res = await fetch(`${ENGINE.replace(/\/$/, "")}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -126,8 +134,13 @@ async function ask(model, prompt, cwd) {
     for (const line of lines) {
       if (!line.trim()) continue;
       try {
-        const j = JSON.parse(line);
-        const chunk = j?.message?.content;
+        const payload = line.startsWith("data:") ? line.slice(5).trim() : line;
+        if (!payload || payload === "[DONE]") {
+          if (first) spin.stop();
+          return out;
+        }
+        const j = JSON.parse(payload);
+        const chunk = j?.choices?.[0]?.delta?.content;
         if (chunk) {
           if (first) {
             spin.stop();
@@ -137,7 +150,7 @@ async function ask(model, prompt, cwd) {
           out += chunk;
           process.stdout.write(ink(chunk.replace(/\n/g, "\n  ")));
         }
-        if (j?.done) {
+        if (j?.choices?.[0]?.finish_reason) {
           if (first) spin.stop();
           return out;
         }
@@ -152,15 +165,15 @@ async function ask(model, prompt, cwd) {
 
 async function cmdModels() {
   banner();
-  const installed = await tags();
+  const installed = await models();
   const ram = ramGB();
   console.log(`  ${dim("This machine:")} ${bold(ram + " GB RAM")}  ${dim("·")} ${os.platform()} ${os.arch()}\n`);
   if (installed === null) {
-    console.log(`  ${red("Ollama isn't running.")} Start it and try again — ${dim("https://ollama.com")}\n`);
+    console.log(`  ${red("The Veylaro MLX endpoint is not running.")} Open Veylaro Code and try again.\n`);
     return;
   }
   for (const t of TIERS) {
-    const hit = installed.find((n) => n === t.tag || n.startsWith(t.tag + ":"));
+    const hit = installed.find((name) => tierOf(name) === t.id);
     const fits = ram >= t.minRam;
     const state = hit ? green("installed") : dim("not installed");
     const fit = fits ? green("fits this machine") : red(`needs ${t.minRam} GB`);
@@ -177,11 +190,11 @@ async function cmdModels() {
 async function cmdDoctor() {
   banner();
   const checks = [];
-  const installed = await tags();
-  checks.push(["Ollama reachable", installed !== null, installed === null ? `nothing at ${OLLAMA}` : OLLAMA]);
+  const installed = await models();
+  checks.push(["Veylaro MLX reachable", installed !== null, installed === null ? `nothing at ${ENGINE}` : ENGINE]);
   const best = installed ? bestTier(installed) : null;
   checks.push(["A Laro model installed", !!best, best ? best.model : "run Veylaro Code once to install"]);
-  checks.push([`Memory (${ramGB()} GB)`, ramGB() >= 4, ramGB() >= 8 ? "comfortable" : ramGB() >= 4 ? "Lite only" : "below the 4 GB floor"]);
+  checks.push([`Memory (${ramGB()} GB)`, ramGB() >= 8, ramGB() >= 12 ? "Lite or Med" : ramGB() >= 8 ? "Lite only" : "below the 8 GB floor"]);
   let git = false;
   try { execSync("git --version", { stdio: "ignore" }); git = true; } catch { /* no git */ }
   checks.push(["git available", git, git ? "yes" : "optional, but recommended"]);
@@ -204,7 +217,7 @@ function help() {
   console.log(`  ${bold("veylaro --version")}`);
   console.log("");
   console.log(`  ${dim("Everything runs on this machine. Nothing is uploaded.")}`);
-  console.log(`  ${dim("Set VEYLARO_HOST to point at a different Ollama.")}`);
+  console.log(`  ${dim("Set VEYLARO_HOST to a local OpenAI-compatible Veylaro MLX endpoint.")}`);
   console.log("");
 }
 
@@ -251,11 +264,11 @@ async function main() {
   if (first === "models") return cmdModels();
   if (first === "doctor") return cmdDoctor();
 
-  const installed = await tags();
+  const installed = await models();
   if (installed === null) {
     banner();
-    console.log(`  ${red("Ollama isn't running")} — Laro needs it to serve the model.`);
-    console.log(`  ${dim("Start Ollama, then run")} ${bold("veylaro doctor")}\n`);
+    console.log(`  ${red("The Veylaro MLX endpoint is not running.")}`);
+    console.log(`  ${dim("Open Veylaro Code, then run")} ${bold("veylaro doctor")}\n`);
     process.exit(1);
   }
   const best = bestTier(installed);

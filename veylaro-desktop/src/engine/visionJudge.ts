@@ -17,7 +17,15 @@
    ============================================================ */
 
 /** Vision models we'll use as the taste critic, best first. */
-export const VISION_MODELS = ["laro-vision", "qwen2.5vl", "llava:13b", "llava", "bakllava", "moondream"];
+export const VISION_MODELS = [
+  "laro-vision",
+  "mlx-community/Qwen2-VL-2B-Instruct-4bit",
+  "qwen2.5vl",
+  "llava:13b",
+  "llava",
+  "bakllava",
+  "moondream",
+];
 
 /** Pick the sharpest installed vision model, or null if none. */
 export function pickVisionModel(installed: string[]): string | null {

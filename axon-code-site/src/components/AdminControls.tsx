@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { AppConfig, DEFAULT_CONFIG, loadAppConfig, saveAppConfig } from "../lib/appConfig";
 import { GlowCard } from "./FX";
+import { PUBLIC_ARTIFACTS_READY } from "../config";
 
 /* ============================================================
    Mission Control → Controls
@@ -83,16 +84,18 @@ export function AdminControls() {
         <h4>The big switch</h4>
         <Row
           title="Downloads open to the public"
-          sub={cfg.downloads_enabled
+          sub={!PUBLIC_ARTIFACTS_READY
+            ? "Hard-locked by release QA: no signed, notarized, self-contained artifact has passed a clean-machine launch yet."
+            : cfg.downloads_enabled
             ? "LIVE — the download buttons work for everyone right now."
             : "Off — buttons are visible but greyed out, and visitors see the register-interest form instead."}
         >
           <button
             className={`btn ${cfg.downloads_enabled ? "ghost" : "primary"}`}
-            disabled={busy !== null || state === "missing"}
+            disabled={!PUBLIC_ARTIFACTS_READY || busy !== null || state === "missing"}
             onClick={() => set({ downloads_enabled: !cfg.downloads_enabled }, "Downloads")}
           >
-            {busy === "Downloads" ? "Saving…" : cfg.downloads_enabled ? "Turn downloads OFF" : "Turn downloads ON"}
+            {!PUBLIC_ARTIFACTS_READY ? "Blocked by release QA" : busy === "Downloads" ? "Saving…" : cfg.downloads_enabled ? "Turn downloads OFF" : "Turn downloads ON"}
           </button>
         </Row>
         <Row
@@ -130,9 +133,9 @@ export function AdminControls() {
           checksum, licence notice and required benchmark evidence are complete.
         </p>
         {([
-          ["Laro Lite", "4B · 4 GB minimum · HumanEval measured", "lite_download_enabled"],
-          ["Laro Med", "12B · 12 GB minimum · HumanEval measured", "med_download_enabled"],
-          ["Laro Max", "24B · 24 GB minimum · benchmark pending", "max_download_enabled"],
+          ["Laro Lite", "4B · 8 GB minimum · current artifact benchmark pending", "lite_download_enabled"],
+          ["Laro Med", "12B · 12 GB minimum · current artifact benchmark pending", "med_download_enabled"],
+          ["Laro Max", "24B · 24 GB minimum · current artifact benchmark pending", "max_download_enabled"],
         ] as const).map(([title, sub, key]) => (
           <Row key={key} title={title} sub={`${sub}. ${cfg[key] ? "Enabled for release." : "Held behind the release gate."}`}>
             <button
@@ -145,7 +148,7 @@ export function AdminControls() {
           </Row>
         ))}
         <div className="ctl-cur">
-          Public installer: {cfg.downloads_enabled ? "on" : "off"} · available tiers:{" "}
+          Public installer: {!PUBLIC_ARTIFACTS_READY ? "hard-locked" : cfg.downloads_enabled ? "on" : "off"} · available tiers:{" "}
           {[cfg.lite_download_enabled && "Lite", cfg.med_download_enabled && "Med", cfg.max_download_enabled && "Max"]
             .filter(Boolean).join(", ") || "none"}
         </div>

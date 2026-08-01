@@ -14,8 +14,8 @@ import {
 const STORY = [
   {
     num: "01 — Install",
-    title: "The model downloads with the app.",
-    body: "One installer. It offers only the Laro tiers that have passed their individual release gates, then recommends a fit for your memory. No hosted inference API key.",
+    title: "Install the app. Choose a verified model.",
+    body: "The signed app offers only Laro tiers that have passed their individual release gates, then recommends a fit for your memory. No hosted inference API key.",
   },
   {
     num: "02 — Understand",
@@ -30,7 +30,7 @@ const STORY = [
   {
     num: "04 — Own",
     title: "Everything stays on your machine.",
-    body: "Prompts, diffs, memory, telemetry: zero bytes leave your hardware. Unplug the internet and Veylaro keeps working. That's not a policy — it's physics.",
+    body: "Inference, project files, diffs and memory stay on your machine. Optional search sends the displayed query, and account services sync plan data. Turn those off and project work remains local.",
   },
 ];
 
@@ -47,7 +47,7 @@ function StoryVisual({ active }: { active: number }) {
           <div style={{ height: 10, borderRadius: 6, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
             <div style={{ height: "100%", width: active === 0 ? "86%" : "0%", background: "var(--grad-btn)", borderRadius: 6, transition: "width 2.6s var(--ease-out)" }} />
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 12 }}>Model weights included · installs in minutes</div>
+          <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 12 }}>Signed app + verified model bundle · installs locally</div>
         </div>
       </div>
       {/* 02 — reads codebase */}
@@ -340,8 +340,8 @@ export function Home() {
             <span className="eyebrow"><span className="dot" />Benchmarks</span>
             <h2 className="h-xl">Measured code generation.<br /><span className="grad-text">Local execution.</span></h2>
             <p className="lede" style={{ marginTop: 18 }}>
-              HumanEval is narrow, but reproducible. We publish the two tier results we have
-              executed and leave the rest blank until the evidence exists.
+              Release scores belong to exact checkpoints, runtimes, and harnesses. Historical
+              research runs stay visible, but current tiers remain pending until reproduced.
             </p>
           </Reveal>
           <Reveal delay={150}>
@@ -360,11 +360,11 @@ export function Home() {
         <div className="container split">
           <Reveal variant="from-left">
             <span className="eyebrow"><span className="dot" />Private by physics</span>
-            <h2 className="h-xl">Cloud AI reads your code.<br /><span className="grad-text">Veylaro can't. It's offline.</span></h2>
+            <h2 className="h-xl">Keep model inference local.<br /><span className="grad-text">Choose when the network is used.</span></h2>
             <p className="lede" style={{ marginTop: 20 }}>
-              Every cloud assistant ships your proprietary code to servers you don't control,
-              under policies you didn't write. Veylaro's privacy isn't a promise in a terms-of-service —
-              it's an architecture. There is no server to send your code to.
+              Veylaro runs model inference, project indexing, memory, and transcripts on your machine.
+              Optional account, update, and live-search services use the network only when disclosed;
+              local project context is not attached to those requests by default.
             </p>
             <Link to="/local" className="btn ghost" style={{ marginTop: 28 }}>
               Why local wins <ArrowRight size={15} />

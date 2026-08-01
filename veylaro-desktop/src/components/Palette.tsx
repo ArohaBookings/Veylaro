@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../state/store";
-import { Session } from "../types";
+import { MODELS, Session } from "../types";
 
 /* ============================================================
    ⌘K command palette — jump anywhere, do anything, no mouse.
@@ -79,9 +79,11 @@ export function Palette({ onClose, openModal, setView }: {
   useEffect(() => inputRef.current?.focus(), []);
 
   const cmds = useMemo<Cmd[]>(() => {
+    const modelOrder = ["lite", "med", "max"] as const;
+    const nextModel = modelOrder[(modelOrder.indexOf(settings.model) + 1) % modelOrder.length];
     const c: Cmd[] = [
       { id: "new", label: "New session…", hint: "pick a file or folder", run: () => openModal("new") },
-      { id: "model", label: `Switch model → ${settings.model === "max" ? "Laro Lite" : "Laro Max"}`, hint: "weights swap instantly", run: () => setSettings({ model: settings.model === "max" ? "lite" : "max" }) },
+      { id: "model", label: `Select model → ${MODELS[nextModel].name}`, hint: MODELS[nextModel].ram, run: () => setSettings({ model: nextModel, autoPickModel: false }) },
       { id: "plan", label: `Plan mode → ${settings.planMode ? "off" : "on"}`, hint: "approve plans before edits", run: () => setSettings({ planMode: !settings.planMode }) },
       { id: "net", label: `Internet → ${settings.internet ? "off" : "on"}`, hint: "web search + browser viewport", run: () => setSettings({ internet: !settings.internet }) },
       { id: "reason", label: `Visible reasoning → ${settings.reasoning ? "off" : "on"}`, hint: "watch Laro think", run: () => setSettings({ reasoning: !settings.reasoning }) },
@@ -89,7 +91,7 @@ export function Palette({ onClose, openModal, setView }: {
       { id: "deck", label: `${settings.deckOpen ? "Hide" : "Show"} the Viewport deck`, run: () => setSettings({ deckOpen: !settings.deckOpen }) },
       { id: "term", label: "Open Terminal view", hint: "real shell, scoped", run: () => setView("term") },
       { id: "agent", label: "Open Agent view", run: () => setView("chat") },
-      { id: "intel", label: "Intelligence — updates & overnight training", run: () => openModal("intel") },
+      { id: "intel", label: "Intelligence — updates & verified local memory", run: () => openModal("intel") },
       { id: "settings", label: "Settings", run: () => openModal("settings") },
     ];
     if (active) {

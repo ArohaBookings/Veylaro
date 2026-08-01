@@ -7,9 +7,12 @@
  *  Flip to true to arm the real downloads. */
 export const DOWNLOADS_ENABLED = false;
 
-/** Packaged desktop artifacts. Hosted on GitHub Releases — free, fast,
-    global CDN, no Apple developer fee, and the checksums sit next to
-    the files so anyone can verify what they downloaded. */
+/** Hard release fuse. Remote admin switches cannot expose an artifact until a
+ *  clean-machine, signed/notarized, self-contained build has passed release QA. */
+export const PUBLIC_ARTIFACTS_READY = false;
+
+/** Candidate artifact locations. PUBLIC_ARTIFACTS_READY must remain false for
+    the legacy v1.0.0 shell because it is not notarized or self-contained. */
 const REL = "https://github.com/ArohaBookings/Veylaro/releases/download/v1.0.0";
 export const BUILDS = {
   macArm: `${REL}/VeylaroCode-1.0.0-arm64-mac.zip`,

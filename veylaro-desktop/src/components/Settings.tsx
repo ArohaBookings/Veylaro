@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../state/store";
-import { APP_VERSION, LangPref, ModelId, MODELS, REFERRAL_MAX, SubAgentPref } from "../types";
+import { APP_VERSION, LangPref, ModelCatalogItem, ModelId, ModelInstallProgress, MODELS, REFERRAL_MAX, SubAgentPref } from "../types";
 import { fitCheck, recommendModel, SYSTEM_TIERS, TIER_BY_ID } from "../engine/tiers";
-import { PRODUCTION_SYSTEMS } from "../engine/executionLattice";
+import { tierFromModelName } from "../engine/runtime";
 import {
   clearVerifiedPrecedents,
   exportVerifiedPrecedents,
@@ -17,7 +17,7 @@ import { Bolt, Check, Clock, Cpu, Eye, Globe, Lock, Shield, Sparkle, TerminalIc,
    ============================================================ */
 
 type PageId =
-  | "general" | "models" | "systems" | "permissions" | "privacy"
+  | "general" | "models" | "permissions" | "privacy"
   | "account" | "referrals" | "learning" | "terminal" | "about";
 
 const PAGES: { id: PageId; label: string; icon: JSX.Element }[] = [
@@ -124,7 +124,7 @@ function GeneralPage() {
       <Toggle on={settings.planMode} onChange={(v) => setSettings({ planMode: v })}
         title="Show me the plan first" sub="Laro writes the plan and waits for your OK before touching anything." />
       <Toggle on={settings.internet} onChange={(v) => setSettings({ internet: v })}
-        title="Let it search the web" sub="Only your search words leave the machine — never your code. Works offline without it." />
+        title="Let it search the web" sub="The displayed search query goes to the provider. Project files are not attached. Works offline without it." />
       <Toggle on={settings.voice} onChange={(v) => setSettings({ voice: v })}
         title="Read summaries aloud" sub="Laro speaks the recap when a job finishes." />
       <Toggle on={settings.sounds} onChange={(v) => setSettings({ sounds: v })}
@@ -145,34 +145,117 @@ function GeneralPage() {
 
 function ModelsPage() {
   const { settings, setSettings, ramGB, liveModel } = useStore();
-  const suggested = recommendModel(ramGB);
+  const hardwareSuggested = recommendModel(ramGB);
+  const [catalog, setCatalog] = useState<ModelCatalogItem[] | null>(null);
+  const [catalogError, setCatalogError] = useState("");
+  const [installing, setInstalling] = useState<ModelId | null>(null);
+  const [progress, setProgress] = useState<ModelInstallProgress | null>(null);
+
+  const refreshCatalog = async () => {
+    if (!window.veylaro?.modelCatalog) {
+      setCatalog(SYSTEM_TIERS.map((tier) => ({
+        tier: tier.id,
+        releaseStatus: "gated" as const,
+        installed: false,
+        gateReason: "No signed model bundle is embedded in this browser preview.",
+      })));
+      return;
+    }
+    const result = await window.veylaro.modelCatalog();
+    setCatalog(result.models);
+    setCatalogError(result.ok ? "" : (result.error || "The signed model catalog could not be verified."));
+  };
+
+  useEffect(() => {
+    void refreshCatalog();
+    return window.veylaro?.onModelProgress?.((event) => setProgress(event));
+  }, []);
+
+  const install = async (tier: ModelId) => {
+    if (!window.veylaro?.modelInstall || installing) return;
+    setInstalling(tier);
+    setProgress(null);
+    setCatalogError("");
+    const result = await window.veylaro.modelInstall(tier);
+    setInstalling(null);
+    if (!result.ok) setCatalogError(result.error || `${MODELS[tier].name} could not be installed.`);
+    await refreshCatalog();
+  };
+
+  const progressPercent = progress?.bundleTotal
+    ? Math.min(100, Math.round(100 * (progress.completed + progress.received) / progress.bundleTotal))
+    : 0;
+  const liveTier = tierFromModelName(liveModel || "");
+  const availableTiers = new Set<ModelId>([
+    ...(liveTier ? [liveTier] : []),
+    ...(catalog || []).filter((item) => item.installed).map((item) => item.tier),
+  ]);
+  const suggested = (["max", "med", "lite"] as ModelId[]).find((tier) =>
+    availableTiers.has(tier) && fitCheck(tier, ramGB).status !== "insufficient"
+  ) || liveTier || hardwareSuggested;
   return (
     <>
       <div className="fit-note" style={{ marginTop: 0 }}>
         <Cpu size={16} style={{ flexShrink: 0, marginTop: 1, color: "var(--champagne)" }} />
         <span>
-          This machine has <b>{ramGB} GB</b> of memory. We'd put you on <b>{TIER_BY_ID[suggested].name}</b>.
+          This machine has <b>{ramGB} GB</b> of memory. Best available: <b>{TIER_BY_ID[suggested].name}</b>.
+          {suggested !== hardwareSuggested ? <> The hardware could fit <b>{TIER_BY_ID[hardwareSuggested].name}</b>, but its verified files are not installed.</> : null}
           {liveModel ? <> Installed right now: <b>{liveModel.replace(/:latest$/, "")}</b>.</> : <> No Laro weights installed yet — the preview brain is driving.</>}
         </span>
+      </div>
+
+      <div className="mrow">
+        <label>Verified model files</label>
+        <div className="model-downloads">
+          {(catalog || []).map((item) => (
+            <div className="model-download-row" key={item.tier}>
+              <div>
+                <b>{MODELS[item.tier].name}</b>
+                <span>
+                  {item.installed
+                    ? "Installed and integrity-matched"
+                    : item.releaseStatus === "ready"
+                      ? `${item.bytes ? `${(item.bytes / (1024 ** 3)).toFixed(1)} GB · ` : ""}signed download ready`
+                      : item.gateReason || "Not release-ready"}
+                </span>
+              </div>
+              {item.installed ? (
+                <span className="tc-fit great">Ready</span>
+              ) : item.releaseStatus === "ready" ? (
+                <button className="btn ghost sm" disabled={installing !== null} onClick={() => void install(item.tier)}>
+                  {installing === item.tier ? `${progressPercent}%` : "Install"}
+                </button>
+              ) : (
+                <span className="tc-fit insufficient">Gated</span>
+              )}
+            </div>
+          ))}
+        </div>
+        {catalogError && <div className="login-err" style={{ marginTop: 8 }}>{catalogError}</div>}
+        <div className="hintline">Downloads stream to disk and become selectable only after every file passes its pinned size and SHA-256 check.</div>
       </div>
 
       <div className="tier-grid">
         {SYSTEM_TIERS.map((t) => {
           const fit = fitCheck(t.id, ramGB);
           const picked = settings.model === t.id;
+          const available = availableTiers.has(t.id);
+          const catalogItem = catalog?.find((item) => item.tier === t.id);
           return (
             <button key={t.id} className={`tier-card ${picked ? "on" : ""} fit-${fit.status}`}
-              disabled={fit.status === "insufficient"}
-              title={fit.note}
+              disabled={fit.status === "insufficient" || !available}
+              title={!available ? (catalogItem?.gateReason || `${t.name} is not installed.`) : fit.note}
               onClick={() => setSettings({ model: t.id, autoPickModel: false })}>
               <span className="tc-top">
                 <b>{t.name}</b>
                 {picked && <span className="tc-pick">✓ in use</span>}
-                {!picked && t.id === suggested && <span className="tc-sug">suggested</span>}
+                {!picked && available && t.id === suggested && <span className="tc-sug">suggested</span>}
               </span>
               <span className="tc-line">{t.tagline}</span>
               <span className="tc-meta">{t.paramsB}B · {t.diskGB} GB on disk · needs {t.minRamGB} GB RAM</span>
-              <span className={`tc-fit ${fit.status}`}>{fit.note}</span>
+              <span className={`tc-fit ${!available ? "insufficient" : fit.status}`}>
+                {available ? fit.note : (catalogItem?.gateReason || `${t.name} is not installed.`)}
+              </span>
             </button>
           );
         })}
@@ -180,18 +263,6 @@ function ModelsPage() {
 
       <Toggle on={settings.autoPickModel} onChange={(v) => setSettings({ autoPickModel: v, ...(v ? { model: suggested } : {}) })}
         title="Pick the best model for me" sub="Veylaro chooses based on your memory, and switches down if the machine gets busy." />
-
-      <div className="safe-note">
-        <Shield size={15} />
-        <div>
-          <b>{PRODUCTION_SYSTEMS.length} execution systems on every tier</b>
-          <p>
-            Contract, reproduction, scoped retrieval, blast-radius, counterexample,
-            execution, failure-memory, holdout, evidence-budget and claim-calibration
-            gates stay the same when you swap Lite, Med or Max.
-          </p>
-        </div>
-      </div>
 
       <div className="mrow">
         <label>How many helpers work at once</label>
@@ -440,7 +511,7 @@ function LearningPage() {
       <Toggle on={settings.overnight} onChange={(v) => setSettings({ overnight: v })}
         title="Use private verified learning" sub="Save only locally observed passing checks, then retrieve relevant precedents on future work. Off by default." />
       <Toggle on={settings.overnightOnlyWhenPlugged} onChange={(v) => setSettings({ overnightOnlyWhenPlugged: v })}
-        title="Reserve adapter preparation for idle power" sub="Future adapter jobs may run only while plugged in and idle. Retrieval itself is lightweight." />
+        title="Consolidate only while plugged in" sub="Verified-memory indexing waits for idle AC power. Retrieval itself is lightweight." />
       <div className="mrow">
         <label>Local review budget</label>
         <div className="seg" style={{ width: "fit-content" }}>
@@ -456,7 +527,7 @@ function LearningPage() {
           <p>
             A record is created only from an observed passing terminal or verification result.
             Records stay on this machine and are never mixed into another user's model.
-            {liveModel ? ` Current runtime: ${liveModel.replace(/:latest$/, "")}.` : " No trainable weights are installed yet."}
+            {liveModel ? ` Current runtime: ${liveModel.replace(/:latest$/, "")}.` : " No local checkpoint is currently detected."}
           </p>
         </div>
       </div>
@@ -465,8 +536,8 @@ function LearningPage() {
         <button className="btn ghost sm" disabled={count === 0} onClick={clear}>Delete records</button>
       </div>
       <div className="hintline">
-        Weight training is a separate release-gated process. Veylaro may prepare examples,
-        but it must not promote an adapter until an unseen holdout beats the installed model.
+        This feature never rewrites model weights. Model releases use a separate, offline release gate and
+        must beat the installed model on unseen holdouts before distribution.
       </div>
     </>
   );

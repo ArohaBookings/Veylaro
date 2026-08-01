@@ -110,11 +110,10 @@ function WorkingLine({ mode, streamedChars }: { mode: "think" | "work"; streamed
   }, []);
   const words = mode === "think" ? THINK_WORDS : WORK_WORDS;
   const word = words[wi % words.length];
-  const tokens = streamedChars > 0 ? Math.round(streamedChars / 4) : Math.max(1, Math.round(sec * 32));
   return (
     <span className="working-line">
       <span className="laro-spin" aria-hidden><VeylaroSpinner /></span>
-      <span key={word} className="think-word">{word}</span>… {sec}s · ~{tokens} tokens
+      <span key={word} className="think-word">{word}</span>… {sec}s{streamedChars > 0 ? ` · ${streamedChars} characters received` : ""}
     </span>
   );
 }
@@ -198,7 +197,7 @@ function EventView({ ev, lang }: { ev: AgentEvent; lang: LangPref }) {
               <span className="ws">{r.snippet}</span>
             </a>
           ))}
-          <div className="wnote">Pages are fetched and read locally — your code is never part of the search.</div>
+          <div className="wnote">The displayed query is sent to the search provider. Project files are not attached.</div>
         </div>
       );
     case "agents":
@@ -567,7 +566,7 @@ function CompactBar({
         <b>{expanded ? "Re-compact" : "Compacted"}</b> · {asks} earlier task{asks === 1 ? "" : "s"} ·{" "}
         {steps} steps · {files} file{files === 1 ? "" : "s"} touched
       </span>
-      <span className="cnote">context fully retained — Laro forgets nothing</span>
+      <span className="cnote">session saved locally — earlier context is compacted for retrieval</span>
       <span className="carrow">{expanded ? "fold ▴" : "expand ▾"}</span>
     </button>
   );

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://veylaroai.com/schemas/runtime-release-v1.json",
+  "title": "Veylaro Runtime Release Manifest",
+  "type": "object",
+  "required": ["schema_version", "release_id", "engine", "models"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "release_id": { "type": "string", "minLength": 6 },
+    "engine": {
+      "type": "object",
+      "required": ["protocol", "variants"],
+      "properties": {
+        "protocol": { "const": "openai-v1" },
+        "variants": { "type": "object", "minProperties": 1 }
+      }
+    },
+    "models": {
+      "type": "object",
+      "required": ["lite", "med", "max"]
+    }
+  },
+  "additionalProperties": false
+}

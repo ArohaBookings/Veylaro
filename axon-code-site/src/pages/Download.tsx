@@ -2,7 +2,7 @@ import { Reveal, GlowCard } from "../components/FX";
 import { VeylaroMark } from "../components/Logo";
 import { Apple, Windows, Linux, Android, DownloadIcon, Check, Shield, Cpu, Bolt, Sparkle, Gauge } from "../components/Icons";
 import { Link } from "react-router-dom";
-import { BUILDS, DOWNLOADS_ENABLED } from "../config";
+import { BUILDS, DOWNLOADS_ENABLED, PUBLIC_ARTIFACTS_READY } from "../config";
 import { useAppConfig } from "../lib/appConfig";
 import { RegisterInterest } from "../components/Interest";
 
@@ -14,7 +14,7 @@ export function Download() {
     med: cfg.med_download_enabled,
     max: cfg.max_download_enabled,
   };
-  const open = (cfg.downloads_enabled || DOWNLOADS_ENABLED) && Object.values(tierOpen).some(Boolean);
+  const open = PUBLIC_ARTIFACTS_READY && (cfg.downloads_enabled || DOWNLOADS_ENABLED) && Object.values(tierOpen).some(Boolean);
 
   return (
     <main>
@@ -26,7 +26,7 @@ export function Download() {
             </div>
             <span className="eyebrow"><span className="dot" />Download</span>
             <h1 className="h-display" style={{ fontSize: "clamp(40px, 6vw, 76px)" }}>
-              One download.<br /><span className="grad-text">The whole intelligence.</span>
+              One app.<br /><span className="grad-text">Choose the model that fits.</span>
             </h1>
             <p className="lede">
               The installer sets up Veylaro Code and offers only model tiers that have passed
@@ -88,33 +88,11 @@ export function Download() {
                   </span>
                 )}
                 <div className="dl-req">
-                  <span>Windows 10 &amp; 11 · x64</span><span>4 GB RAM minimum</span><a href={BUILDS.checksums} target="_blank" rel="noreferrer">SHA-256 ↗</a>
+                  <span>Windows 10 &amp; 11 · x64</span><span>8 GB RAM minimum</span><a href={BUILDS.checksums} target="_blank" rel="noreferrer">SHA-256 ↗</a>
                 </div>
               </GlowCard>
             </Reveal>
           </div>
-          {open && (
-            <Reveal delay={160}>
-              <GlowCard className="dl-note" style={{ marginTop: 26, padding: "20px 24px" }}>
-                <h4 style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
-                  <Apple size={16} /> First time you open it on a Mac
-                </h4>
-                <p style={{ color: "var(--muted)", fontSize: 14, lineHeight: 1.65, margin: 0 }}>
-                  Apple notarization is in progress, so for now macOS may say{" "}
-                  <b>"unidentified developer."</b> That's expected and safe — the app is signed,
-                  just not yet Apple-notarized. To open it the first time:
-                </p>
-                <ol style={{ color: "var(--muted)", fontSize: 14, lineHeight: 1.8, margin: "10px 0 0", paddingLeft: 20 }}>
-                  <li><b>Right-click</b> (or Control-click) the Veylaro Code app → <b>Open</b>.</li>
-                  <li>In the dialog, click <b>Open</b> again. macOS remembers it after that.</li>
-                  <li>On macOS Sequoia+: if there's no Open button, go to <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b>.</li>
-                </ol>
-                <p style={{ color: "var(--dim)", fontSize: 12.5, marginTop: 10, marginBottom: 0 }}>
-                  Full Apple notarization lands shortly — after that this step disappears entirely.
-                </p>
-              </GlowCard>
-            </Reveal>
-          )}
           <Reveal delay={200}>
             <div style={{ display: "flex", justifyContent: "center", gap: 26, marginTop: 30, flexWrap: "wrap" }}>
               <span className="chip"><Linux size={15} /> Linux — coming soon</span>
@@ -132,13 +110,13 @@ export function Download() {
             <span className="eyebrow"><span className="dot" />Three sizes, one intelligence</span>
             <h2 className="h-xl">Pick your Laro.<br /><span className="grad-text">Or let Veylaro pick for you.</span></h2>
             <p className="lede" style={{ marginTop: 16 }}>
-              All three ship in the same download. Veylaro reads your machine on first launch and puts you
-              on the right one — you can change it any time from the bar at the bottom of the app.
+              The signed app and each released model bundle are verified independently. Veylaro reads your
+              machine on first launch, recommends a tier, and keeps unreleased tiers unavailable.
             </p>
           </Reveal>
           <div className="tier-cards">
             {[
-              { id: "lite" as const, n: "Laro Lite", p: "4B", d: "2.6 GB", r: "4 GB minimum · 8 GB recommended", i: <Gauge size={22} />,
+              { id: "lite" as const, n: "Laro Lite", p: "4B", d: "3.6 GB", r: "8 GB minimum · 8 GB recommended", i: <Gauge size={22} />,
                 b: "Runs on almost anything — old laptops, cheap Windows machines, a Pi with patience. Same agent, feather footprint, near-instant replies." },
               { id: "med" as const, n: "Laro Med", p: "12B", d: "7.6 GB", r: "12 GB minimum · 16 GB recommended", i: <Sparkle size={22} />, feat: true,
                 b: "The one we measured hardest and the one most people should run. Best balance of smart and fast on an ordinary laptop." },
@@ -174,7 +152,7 @@ export function Download() {
           </Reveal>
           <div className="step-list">
             {[
-              { t: "Install the app", b: "Open the installer and drag Veylaro into place. The full model comes bundled — the download is the setup." },
+              { t: "Install the app", b: "Install the signed, notarized app, then select a released model bundle whose hash and licence manifest have been verified." },
               { t: "Point it at a project", b: "Pick a file or folder. Veylaro indexes it on-device in seconds and locks its edits to that scope. Nothing is uploaded." },
               { t: "Give it real work", b: "\"Fix the flaky checkout test.\" \"Add dark mode.\" Watch an agent plan, edit, run and verify — all on your silicon." },
             ].map((s, i) => (
@@ -203,7 +181,7 @@ export function Download() {
             </p>
             <ul style={{ listStyle: "none", marginTop: 22, display: "flex", flexDirection: "column", gap: 12 }}>
               {[
-                "Laro Lite — 4 GB minimum, 8 GB recommended",
+                "Laro Lite — 8 GB minimum and recommended",
                 "Laro Med — 12 GB minimum, 16 GB recommended",
                 "Laro Max — 24 GB minimum, 32 GB recommended",
                 "Allow additional free disk space for indexes, projects and updates",
@@ -217,8 +195,8 @@ export function Download() {
           <Reveal variant="from-right" delay={120}>
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {[
-                { icon: <Shield size={20} />, t: "Signed & verifiable", b: "Every build is code-signed and published with SHA-256 checksums. What we ship is what you run." },
-                { icon: <Cpu size={20} />, t: "Yours after install", b: "Once installed, Veylaro needs the network for nothing. License checks are periodic and code-free; the model never expires." },
+                { icon: <Shield size={20} />, t: "Release-gated", b: "Public downloads stay locked until platform signing, notarization, checksums and clean-machine launch checks all pass." },
+                { icon: <Cpu size={20} />, t: "Local inference", b: "Model inference and project work run locally. Optional account, update and live-search features use the network only when disclosed." },
                 { icon: <Bolt size={20} />, t: "Free tier inside", b: "Every download includes the free tier — no trial clock on the model itself. Upgrade to Pro inside the app when you're ready." },
               ].map((c) => (
                 <GlowCard key={c.t} style={{ display: "flex", gap: 18, alignItems: "flex-start", padding: 24 }}>

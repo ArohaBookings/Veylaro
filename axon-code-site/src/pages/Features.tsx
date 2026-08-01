@@ -120,7 +120,7 @@ export function Features() {
           <Reveal variant="zoom">
             <div className="cta-band">
               <h2>Feel it on your own repo.</h2>
-              <p>The download includes the full model and a generous free tier. Point it at your gnarliest codebase.</p>
+              <p>Install Veylaro Code and a released local model bundle, then point it at your gnarliest codebase.</p>
               <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
                 <Link to="/download" className="btn primary lg"><DownloadIcon size={18} /> Download Veylaro</Link>
                 <Link to="/benchmarks" className="btn ghost lg">Compare benchmarks <ArrowRight size={15} /></Link>

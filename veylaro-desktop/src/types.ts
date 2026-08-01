@@ -221,31 +221,28 @@ export const FREE_WEEKLY_LIMIT = 50;
 
 export const MODELS: Record<
   ModelId,
-  { name: string; tag: string; disk: string; ram: string; tps: [number, number]; blurb: string }
+  { name: string; tag: string; disk: string; ram: string; blurb: string }
 > = {
   lite: {
     name: "Laro Lite",
     tag: "Featherweight",
-    disk: "2.6 GB",
-    ram: "4 GB RAM and up",
-    tps: [58, 90],
-    blurb: "Runs on almost anything — old laptops welcome. Same agent brain, feather footprint.",
+    disk: "3.6 GB",
+    ram: "8 GB RAM minimum",
+    blurb: "Current local build: Gemma 4 E2B 4-bit. Requires at least 8 GB RAM.",
   },
   med: {
     name: "Laro Med",
     tag: "The sweet spot",
     disk: "7.6 GB",
-    ram: "12 GB RAM and up",
-    tps: [30, 48],
-    blurb: "The measured one. Best balance of smart and fast — our default recommendation.",
+    ram: "12 GB minimum · 16 GB recommended",
+    blurb: "Requires 12 GB RAM; 16 GB is recommended for stable local work.",
   },
   max: {
     name: "Laro Max",
     tag: "Flagship",
     disk: "14 GB",
-    ram: "24 GB+ RAM",
-    tps: [18, 30],
-    blurb: "Everything we know how to give it. For big machines that want the deepest reasoning.",
+    ram: "24 GB minimum · 32 GB recommended",
+    blurb: "Requires 24 GB RAM; 32 GB is recommended. It is not supported on 16 GB systems.",
   },
 };
 
@@ -262,6 +259,32 @@ export interface GuardCtx {
   scopeKind?: "file" | "folder";
   fullDisk?: boolean;
   confirmed?: boolean;
+  rollback?: boolean;
+}
+
+export interface ExecCtx extends GuardCtx {
+  shell?: string;
+  modelInitiated?: boolean;
+  policy?: "repair" | "build";
+}
+
+export interface ModelCatalogItem {
+  tier: ModelId;
+  checkpoint?: string;
+  minimumRamGB?: number;
+  releaseStatus: "ready" | "gated";
+  installed: boolean;
+  bytes?: number;
+  gateReason?: string;
+}
+
+export interface ModelInstallProgress {
+  tier: ModelId;
+  file: string;
+  received: number;
+  total: number;
+  completed: number;
+  bundleTotal: number;
 }
 
 /** Electron bridge (present only in the desktop build). */
@@ -271,12 +294,20 @@ export interface VeylaroBridge {
   newProject: (name: string) => Promise<string | { error: string } | null>;
   powerState?: () => Promise<{ idleSec: number; onBattery: boolean; ok: boolean }>;
   sysinfo: () => Promise<{ ramGB: number; platform: string; arch: string; cpus: number; version: string }>;
-  exec: (cmd: string, cwd?: string, opts?: { confirmed?: boolean; shell?: string }) => Promise<{ out: string; ok: boolean; blocked?: boolean; needsConfirm?: boolean }>;
-  serve?: (cmd: string, cwd?: string) => Promise<{ ok: boolean; url?: string; pid?: number; guessed?: boolean; error?: string }>;
+  engineEnsure?: (url: string, preferredModel?: string, sku?: ModelId) => Promise<{ ok: boolean; url: string; provider?: string; model?: string; tier?: ModelId; started?: boolean; error?: string }>;
+  engineStop?: () => Promise<{ ok: boolean; stopped?: boolean }>;
+  memoryState?: () => Promise<{ totalGB: number; freeGB: number; freePct: number; pressureFreePct?: number }>;
+  modelCatalog?: () => Promise<{ ok: boolean; productionReady: boolean; releaseId: string | null; models: ModelCatalogItem[]; error?: string }>;
+  modelInstall?: (tier: ModelId) => Promise<{ ok: boolean; tier?: ModelId; path?: string; checkpoint?: string; bytes?: number; releaseId?: string; error?: string }>;
+  modelCancel?: (tier: ModelId) => Promise<{ ok: boolean; canceled: boolean }>;
+  onModelProgress?: (callback: (progress: ModelInstallProgress) => void) => () => void;
+  exec: (cmd: string, cwd?: string, opts?: ExecCtx) => Promise<{ out: string; ok: boolean; blocked?: boolean; needsConfirm?: boolean }>;
+  serve?: (cmd: string, cwd?: string, ctx?: GuardCtx) => Promise<{ ok: boolean; url?: string; pid?: number; guessed?: boolean; error?: string }>;
   stopServe?: (pid: number) => Promise<{ ok: boolean }>;
-  readFile?: (p: string) => Promise<{ ok: boolean; content?: string; error?: string }>;
+  readFile?: (p: string, ctx?: GuardCtx) => Promise<{ ok: boolean; exists: boolean; content?: string; blocked?: boolean; needsConfirm?: boolean; error?: string }>;
   writeFile?: (p: string, content: string, ctx?: GuardCtx) => Promise<{ ok: boolean; path?: string; blocked?: boolean; needsConfirm?: boolean; error?: string }>;
-  listDir?: (p: string) => Promise<{ ok: boolean; entries?: { name: string; dir: boolean }[]; error?: string }>;
+  restoreFile?: (p: string, content: string | null, ctx?: GuardCtx) => Promise<{ ok: boolean; path?: string; removed?: boolean; blocked?: boolean; error?: string }>;
+  listDir?: (p: string, ctx?: GuardCtx) => Promise<{ ok: boolean; entries?: { name: string; dir: boolean }[]; blocked?: boolean; needsConfirm?: boolean; error?: string }>;
   checkWrite?: (p: string, ctx?: GuardCtx) => Promise<{ allow: boolean; needsConfirm?: boolean; reason?: string }>;
   search: (query: string) => Promise<{ ok: boolean; results: { title: string; url: string; snippet: string }[] }>;
   isDesktop: boolean;

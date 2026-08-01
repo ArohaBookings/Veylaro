@@ -1,31 +1,57 @@
 {
-  "generated_at": "2026-07-29T09:53:48.583677+00:00",
-  "status": "pre-release evidence",
-  "humaneval": {
-    "protocol": "HumanEval 164 tasks; one generated completion per task; generated code executed; incomplete output counted as failure",
-    "laro_lite_4b": {
-      "result": "113/164",
-      "score_pct": 68.9,
-      "artifact_sha256": "0c7dfa3d258db31e097188720ee10a1cce1f82d7bc1f2baa93eb57acb3379dea"
+  "generated_at": "2026-08-02T00:00:00Z",
+  "status": "release blocked; current tier benchmarks pending",
+  "current_release_tiers": {
+    "laro_lite": {
+      "checkpoint": "mlx-community/gemma-4-e2b-it-4bit",
+      "status": "not run on release benchmark harness"
     },
-    "laro_med_12b": {
-      "result": "149/164",
-      "score_pct": 90.9,
-      "artifact_sha256": "423c7df9e91f6cb4ccdffcec0ea727948b2fdf5de3d4aedb194396df583c890f"
+    "laro_med": {
+      "checkpoint": "mlx-community/gemma-4-12B-it-4bit",
+      "status": "independent checkpoint unavailable on this host; not run"
     },
-    "laro_max_24b": {
-      "status": "not run"
+    "laro_max": {
+      "checkpoint": "mlx-community/Devstral-Small-2-24B-Instruct-2512-OptiQ-4bit",
+      "status": "requires at least 24 GB RAM; not run"
     }
   },
+  "historical_humaneval": {
+    "protocol": "HumanEval 164 tasks; one generated completion per task; generated code executed; incomplete output counted as failure",
+    "gemma_3_4b_base": {
+      "result": "113/164",
+      "score_pct": 68.9,
+      "runtime_identity": "mlx-community/gemma-3-text-4b-it-4bit (base)",
+      "report": "/evidence/historical/humaneval-gemma3-4b-base.json",
+      "report_sha256": "40e24408fe3895b7bb50026c86e4d6e18d1beda752257d286beb56488dbb97f7",
+      "inherited_by_current_laro": false
+    },
+    "gemma_4_12b_ollama": {
+      "result": "149/164",
+      "score_pct": 90.9,
+      "runtime_identity": "gemma4:12b via Ollama",
+      "report": "/evidence/historical/humaneval-gemma4-12b-ollama.json",
+      "report_sha256": "92451589b7f897005d8bdada66c76fea836902284a6653cc58ad52388db58f4c",
+      "inherited_by_current_laro": false
+    }
+  },
+  "current_system_course": {
+    "tier": "Laro Lite",
+    "checkpoint": "mlx-community/gemma-4-e2b-it-4bit",
+    "result": "0/3",
+    "score_pct": 0.0,
+    "scope": "latest completed small local production repair course; not SWE-bench or a frontier benchmark",
+    "date": "2026-08-02",
+    "temporal_note": "This run predates the assertion-guided repair lane. A later bounded candidate tournament passed one narrow fixture, but the complete three-task course has not been rerun."
+  },
   "swe_bench": {
-    "laro_lite": "No tier score. One preselected development pilot task resolved by the upstream evaluator; 1/1 is mechanism evidence only.",
+    "laro_lite": "No valid tier score.",
     "laro_med": "12.5% clean development subset; 20.83% oracle-assisted development subset. Neither is leaderboard-comparable.",
     "laro_max": "Not run.",
-    "lite_pilot_report_sha256": "2ebbcc2889dc004393f68a0c56d3a4de6f9facaac9b3f4fa3e79f9dc9eb6851b"
+    "note": "Development pilots and projections are not leaderboard-comparable and are not marketed as release scores."
   },
   "weight_training": {
     "adapter_win_proven": false,
     "note": "No trained adapter beat the incumbent. No adapter result is marketed as an improvement."
   },
-  "runtime_caveat": "The currently installed 8B preview runtime is a separate artifact and does not inherit the 4B or 12B HumanEval scores."
+  "runtime_caveat": "The currently installed Lite runtime is a separate artifact and does not inherit either historical HumanEval score."
 }

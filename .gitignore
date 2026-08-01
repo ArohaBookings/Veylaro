@@ -2,6 +2,8 @@
 /*
 !/axon-code-site/
 !/veylaro-desktop/
+!/evaluation/
+!/evaluation/**
 !/.gitignore
 !/README.md
 
@@ -15,3 +17,4 @@ release/
 
 # big binaries never belong in git (GitHub Releases host these)
 axon-code-site/public/downloads/
+evaluation/runs/*.json

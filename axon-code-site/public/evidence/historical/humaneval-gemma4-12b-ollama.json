@@ -1,0 +1,842 @@
+{
+  "benchmark": "HumanEval",
+  "official": true,
+  "evaluator": "execute-tests",
+  "backend": "ollama",
+  "model": "gemma4:12b",
+  "label": "Laro Med (12B)",
+  "thinking": false,
+  "problems": 164,
+  "offset": 0,
+  "passed": 149,
+  "pass_at_1_pct": 90.9,
+  "generation_errors": 0,
+  "truncations": 0,
+  "valid": true,
+  "invalid_reason": null,
+  "max_tokens": 1200,
+  "num_ctx": 8192,
+  "seconds": 3632.6,
+  "results": [
+    {
+      "task": "HumanEval/0",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/1",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/2",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/3",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/4",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/5",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/6",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/7",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/8",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/9",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/10",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/11",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/12",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/13",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/14",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/15",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/16",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/17",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/18",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/19",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/20",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/21",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/22",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/23",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/24",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/25",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/26",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/27",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/28",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/29",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/30",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/31",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/32",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/33",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/34",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/35",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/36",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/37",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/38",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/39",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/40",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/41",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/42",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/43",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/44",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/45",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/46",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/47",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/48",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/49",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/50",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/51",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/52",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/53",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/54",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/55",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/56",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/57",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/58",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/59",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/60",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/61",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/62",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/63",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/64",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/65",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/66",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/67",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/68",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/69",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/70",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/71",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/72",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/73",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/74",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/75",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/76",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/77",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/78",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/79",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/80",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/81",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/82",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/83",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/84",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/85",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/86",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/87",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/88",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/89",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/90",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/91",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/92",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/93",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/94",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/95",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/96",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/97",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/98",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/99",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/100",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/101",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/102",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/103",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/104",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/105",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/106",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/107",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/108",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/109",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/110",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/111",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/112",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/113",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/114",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/115",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/116",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/117",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/118",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/119",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/120",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/121",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/122",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/123",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/124",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/125",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/126",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/127",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/128",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/129",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/130",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/131",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/132",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/133",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/134",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/135",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/136",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/137",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/138",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/139",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/140",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/141",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/142",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/143",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/144",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/145",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/146",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/147",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/148",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/149",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/150",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/151",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/152",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/153",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/154",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/155",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/156",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/157",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/158",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/159",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/160",
+      "passed": false,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/161",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/162",
+      "passed": true,
+      "truncated": false
+    },
+    {
+      "task": "HumanEval/163",
+      "passed": true,
+      "truncated": false
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "course": "Veylaro Production Capability Course",
+  "fixtures": [
+    {
+      "id": "debug-repair",
+      "title": "Debug an immutable shopping cart",
+      "fixture_dir": "fixtures/debug-repair",
+      "contract": "Repair the cart module without changing its API. addLine(cart, sku, unitPriceCents, quantity) must validate inputs, return a new cart and line objects, merge duplicate SKUs, preserve the first unit price for an existing SKU, and never mutate the input. removeLine(cart, sku) must be immutable. totalCents(cart) must return an exact integer total and reject malformed lines.",
+      "allowed_files": [
+        "src/cart.cjs"
+      ],
+      "hidden_tests": {
+        "hidden/cart.test.cjs": "4c6c5aeeed92c36f5b6238779280539c0f35dda85ac75c53e2796d64f97254d7",
+        "hidden/load-submission.cjs": "2c53630383f9063af6d882d030dc1aa98a98736222f1e4fea22f811d85dd57d1"
+      },
+      "test_command": [
+        "node",
+        "--test",
+        "hidden/cart.test.cjs"
+      ]
+    },
+    {
+      "id": "saas-authorization",
+      "title": "Enforce tenant-safe SaaS project creation",
+      "fixture_dir": "fixtures/saas-authorization",
+      "contract": "Repair createProject(context, input, projects). It must require an authenticated actor with role owner or admin, derive tenantId only from the actor, normalize name by trimming and collapsing whitespace, require 3-80 characters, normalize slug to lowercase kebab-case, require 3-48 characters, reject duplicate slugs only within the actor's tenant, return a new projects array without mutating any input, and ignore any caller-supplied id, tenantId, ownerId, or createdAt. IDs and timestamps must come from context.makeId() and context.now(). Throw Error objects with stable messages: Unauthorized, Forbidden, Invalid name, Invalid slug, Duplicate slug.",
+      "allowed_files": [
+        "src/projects.cjs"
+      ],
+      "hidden_tests": {
+        "hidden/projects.test.cjs": "75348a645d7b926ae2ce2375786de7a0076bc9ade02635908e20d2aadfcc431a",
+        "hidden/load-submission.cjs": "2c53630383f9063af6d882d030dc1aa98a98736222f1e4fea22f811d85dd57d1"
+      },
+      "test_command": [
+        "node",
+        "--test",
+        "hidden/projects.test.cjs"
+      ]
+    },
+    {
+      "id": "game-state",
+      "title": "Implement deterministic tic-tac-toe state transitions",
+      "fixture_dir": "fixtures/game-state",
+      "contract": "Repair createGame() and playMove(state, index). A game has a nine-cell board, currentPlayer X then O, winner null or X/O/draw, and moveCount. playMove must reject non-integer or out-of-range indexes, occupied cells, malformed states, and moves after a winner. Every accepted move must return a fully new state and board without mutating the input, alternate players only while the game remains active, detect all eight winning lines, and mark draw exactly after the ninth non-winning move. Throw Error objects with stable messages: Invalid state, Invalid move, Cell occupied, Game finished.",
+      "allowed_files": [
+        "src/game.cjs"
+      ],
+      "hidden_tests": {
+        "hidden/game.test.cjs": "bf04c8663deb8dce4e48144fab3e2d3fae0df474e15ca9cff0a2a45d84014821",
+        "hidden/load-submission.cjs": "2c53630383f9063af6d882d030dc1aa98a98736222f1e4fea22f811d85dd57d1"
+      },
+      "test_command": [
+        "node",
+        "--test",
+        "hidden/game.test.cjs"
+      ]
+    }
+  ]
+}

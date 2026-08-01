@@ -81,13 +81,24 @@ export function deriveBilling(account: Account | null, now: number, online: bool
   return { plan: "free", label: "Checkout incomplete", banner: { tone: "amber", title: "Finish checkout to activate", body: "Your subscription hasn't completed. Finish payment to switch on unlimited.", cta: "finish" } };
 }
 import { buildQuestions, buildRun, needsClarification, sideChatReply, simulateTerminal, TimedEvent } from "../engine/demo";
-import { detectLiveModel, veylaroChat, unloadModel, ChatMsg } from "../engine/runtime";
+import { detectLiveModel, ensureLocalEngine, tierFromModelName, veylaroChat, ChatMsg } from "../engine/runtime";
+import { isFastInteraction, looksLikeBuild, looksLikeDebug, wantsToRunApp } from "../engine/intentRouter";
+import { calibrateCasualReply, instantGreetingReply, runtimeFactReply, verifiedArithmeticReply, VerifiedActivity } from "../engine/claimCalibration";
 import {
   FILE_PROTOCOL_PROMPT, StreamParser, salvageFences, resolveInScope, diffCounts,
 } from "../engine/agentLoop";
 import { recordMilestone, timelineForPrompt } from "../engine/projectTimeline";
-import { planForMemory } from "../engine/memoryGuard";
+import { planForMemory, pressureVerdict } from "../engine/memoryGuard";
 import { GROUNDING_NOTE, LARO_SIDE_CHARTER, SOVEREIGN_FORGE_PROMPT, laroContext } from "../engine/charter";
+import { evidenceBudget, EXECUTION_LATTICE_PROMPT } from "../engine/executionLattice";
+import { cleanAssistantText, collapseReason } from "../engine/outputHygiene";
+import { extractRepairFiles } from "../engine/repairCandidates";
+import { synthesizeSemanticRepairs } from "../engine/semanticRepair";
+import { explicitlyRequestsTestEdits, isProtectedTestPath } from "../engine/testIntegrity";
+import { classifyModelCommand } from "../engine/commandPolicy";
+import { compactFailureEvidence, failureRepairBrief } from "../engine/failureKernel";
+import { reproductionCommand, verificationCommands } from "../engine/verificationPlan";
+import { compileExecutionContract } from "../engine/contractCompiler";
 
 /** The maker's account — signing in as this unlocks the developer build. */
 export const OWNER_EMAIL = "leoanthonybons@gmail.com";
@@ -97,9 +108,10 @@ export const OWNER_EMAIL = "leoanthonybons@gmail.com";
     the "Loading Laro into memory…" state — the load only happens once. */
 let modelWarmUntil = 0;
 const isModelWarm = () => Date.now() < modelWarmUntil;
+const modelWasLoaded = () => modelWarmUntil > 0;
 const markModelWarm = () => { modelWarmUntil = Date.now() + 19 * 60 * 1000; };
 const markModelCold = () => { modelWarmUntil = 0; };
-import { resultsToContext, webSearch } from "../engine/search";
+import { privacySafeSearchQuery, resultsToContext, webSearch } from "../engine/search";
 import { recommendModel, subAgentLanes } from "../engine/tiers";
 import { precedentsAsPrompt, recordVerifiedPrecedent } from "../engine/localLearning";
 
@@ -139,9 +151,9 @@ const DEFAULT_SETTINGS: Settings = {
   lang: "both",
   personality: true,
   sounds: false,
-  engine: "demo",
-  engineUrl: "http://127.0.0.1:11434",
-  engineModel: "veylaro-code",
+  engine: "veylaro",
+  engineUrl: "http://127.0.0.1:8080",
+  engineModel: "mlx-community/gemma-4-e2b-it-4bit",
   internet: true,
   planMode: true,
   subAgents: "auto",
@@ -160,28 +172,6 @@ const DEFAULT_SETTINGS: Settings = {
   overnightIntensity: "gentle",
   terminalShell: "",
 };
-
-function isFastInteraction(text: string): boolean {
-  const clean = text.trim();
-  if (clean.length > 80) return false;
-  return /^(?:(?:hi|hello|hey|yo)(?:\s+(?:there|laro|veylaro|axon(?:\s+ai)?))?|thanks|thank you|good (?:morning|afternoon|evening)|who are you|what are you)[!?.\s]*$/i.test(clean);
-}
-
-/** Does the prompt want something built/changed (vs. a pure question)? Used to
-    decide whether to nudge the model to start writing files instead of stopping. */
-function looksLikeBuild(text: string): boolean {
-  return /\b(build|make|create|implement|add|write|code|fix|refactor|generate|scaffold|set ?up|design|rebuild|redesign|turn (?:this|it) into|convert)\b/i.test(text);
-}
-
-/** "run the localhost / show me / open it / let me see it" — route to opening the
-    Viewport on the live app instead of building. */
-function wantsToRunApp(text: string): boolean {
-  const t = text.trim();
-  if (t.length > 120) return false; // long prompts are builds, not "just show me"
-  return /\b(run|start|serve|launch|open|preview|show|see|view|load)\b.{0,30}\b(local ?host|dev ?server|it|this|the (?:app|ui|site|page|site|project)|my (?:app|ui|site))\b/i.test(t)
-    || /\b(show|let)\s+me\s+(see|it|the)\b/i.test(t)
-    || /^(run|start|open|serve|preview|launch)\s+(it|localhost|the (?:app|site|ui))\b/i.test(t);
-}
 
 function readUsageMirror(): Usage | null {
   try {
@@ -207,6 +197,11 @@ function hydrate(p: Persisted): Persisted {
     p.usage = mirror;
   }
   p.settings = { ...DEFAULT_SETTINGS, ...p.settings };
+  // Migrate the old external-runtime default. Explicit custom endpoints are
+  // preserved; only the legacy stock address moves to the app-owned MLX service.
+  if (p.settings.engineUrl === "http://127.0.0.1:11434" && /^(veylaro|veylaro-code|laro-(?:lite|med|max))(?::latest)?$/.test(p.settings.engineModel)) {
+    p.settings.engineUrl = "http://127.0.0.1:8080";
+  }
   p.sessions = p.sessions.map((s) => ({ ...s, term: s.term || [] }));
   p.vault = p.vault || [];
   return p;
@@ -308,6 +303,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // live run cancellation — the Stop button aborts this, halting the stream
   // and the agent loop cleanly wherever it is.
   const abortRef = useRef<AbortController | null>(null);
+  const runEpochRef = useRef(0);
+  const liveGateRef = useRef<((approved: boolean) => void) | null>(null);
 
   const pushBg = (label: string, detail?: string): string => {
     const id = uid();
@@ -322,6 +319,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     else if ((navigator as any).deviceMemory) setRamGB((navigator as any).deviceMemory);
   }, []);
 
+  // Smart Load lifecycle: while the app is merely open, no model is resident.
+  // Activity refreshes the engine's 20-minute window. Once idle, or once the OS
+  // reports critical free memory, the app-owned process is released.
+  useEffect(() => {
+    if (!window.veylaro?.engineStop) return;
+    const tick = async () => {
+      if (!modelWasLoaded()) return;
+      const expired = !isModelWarm();
+      let critical = false;
+      try {
+        const mem = await window.veylaro?.memoryState?.();
+        // macOS keeps useful memory in inactive/compressed caches, so os.freemem()
+        // alone often reports <0.6 GB on a healthy machine and used to unload Laro
+        // every 30 seconds. memory_pressure is the authoritative reclaimability
+        // signal on Mac; raw free bytes remain the fallback elsewhere.
+        critical = !!mem && pressureVerdict(
+          Number.isFinite(mem.freeGB) ? mem.freeGB : null,
+          typeof mem.pressureFreePct === "number" ? mem.pressureFreePct : mem.freePct,
+        ) === "critical";
+      } catch { /* best effort */ }
+      if (critical && running) {
+        // Free the largest resident allocation immediately. Aborting the run
+        // sends execution through its transactional rollback before finishRun.
+        markModelCold();
+        abortRef.current?.abort();
+        await window.veylaro?.engineStop?.();
+        return;
+      }
+      if ((expired || critical) && !running) {
+        markModelCold();
+        await window.veylaro?.engineStop?.();
+      }
+    };
+    const interval = setInterval(tick, 30000);
+    return () => clearInterval(interval);
+  }, [running]);
+
   // Poll the website's live switches (downloads / unlimited-for-all / launch
   // month). First read on mount, then every 5 min, so an admin flip reaches
   // running clients without a restart.
@@ -335,13 +369,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!st.settings.autoPickModel) return;
-    const recommended = recommendModel(ramGB);
+    const recommended = tierFromModelName(liveModel || "") || recommendModel(ramGB);
     if (st.settings.model === recommended) return;
     setSt((p) => ({
       ...p,
       settings: { ...p.settings, model: recommended },
     }));
-  }, [ramGB, st.settings.autoPickModel, st.settings.model]);
+  }, [liveModel, ramGB, st.settings.autoPickModel, st.settings.model]);
 
   // self-watch: Laro notices when its own UI glitches and logs it honestly
   useEffect(() => {
@@ -381,12 +415,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       setLiveModel(found);
       if (found) {
+        const detectedTier = tierFromModelName(found);
+        // A responsive local endpoint already has its checkpoint resident. Keep
+        // the UI's warm-state clock in sync so a renderer reload does not show a
+        // fake cold-load message on every conversation.
+        markModelWarm();
         setSt((p) => {
-          if (p.autoEngineDone) return p; // user's explicit engine choice wins forever after
+          // The browser preview has no desktop Settings surface on narrow
+          // viewports. When a real local endpoint is present, route chat to it
+          // instead of showing a misleading "live weights" badge over demo text.
+          if (p.autoEngineDone && window.veylaro?.isDesktop) return p;
           return {
             ...p,
             autoEngineDone: true,
-            settings: { ...p.settings, engine: "veylaro", engineModel: found.replace(/:latest$/, "") },
+            settings: {
+              ...p.settings,
+              engine: "veylaro",
+              engineModel: found.replace(/:latest$/, ""),
+              // The checkpoint that actually answered wins over a RAM-based
+              // recommendation. Otherwise a 16 GB machine can display Med
+              // while every token is still coming from Lite.
+              ...(detectedTier ? { model: detectedTier, autoPickModel: false } : {}),
+            },
           };
         });
         // Smart-load: DON'T pre-load the weights at startup. The app stays light
@@ -465,25 +515,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const u = new SpeechSynthesisUtterance(`${ev.title}. ${ev.bullets[0] || ""}`);
       u.rate = 1.05;
       window.speechSynthesis.speak(u);
-    }
-    if (
-      ev.kind === "verify" &&
-      ev.ok &&
-      st.settings.overnight &&
-      st.settings.engine === "veylaro" &&
-      window.veylaro?.isDesktop
-    ) {
-      const session = st.sessions.find((item) => item.id === sessionId);
-      const prompt = [...(session?.msgs || [])].reverse().find((msg) => msg.role === "user")?.text;
-      if (prompt) {
-        recordVerifiedPrecedent({
-          prompt,
-          scopeLabel: session?.scope.split(/[\\/]/).pop() || "project",
-          check: ev.target,
-          evidence: ev.detail,
-          model: st.settings.engineModel,
-        });
-      }
     }
     return mutSession(sessionId, (s) => {
       // const snapshot keeps TypeScript narrowing intact after the ms stamp
@@ -697,54 +728,122 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setRunning(true);
         const controller = new AbortController();
         abortRef.current = controller;
+        const runEpoch = ++runEpochRef.current;
         const signal = controller.signal;
         const sess = active;
-        const modelName = MODELS[settings.model].name;
+        const requestedSku = settings.model;
+        let memPlan = planForMemory(requestedSku, ramGB);
+        let runSku = memPlan.model;
+        let modelName = MODELS[runSku].name;
+        let activeEngineModel = settings.engineModel;
         const scopeName = sess.scope.split(/[\\/]/).pop() || "the project";
         const canWrite = !!window.veylaro?.writeFile;
         const writtenPaths: string[] = []; // everything Laro wrote, for the auto-Viewport
+        const writeFeedback: string[] = [];
+        const runSnapshots = new Map<string, string | null>();
+        let runRolledBack = false;
         // Memory Guard: right-size the context to this machine so it never swaps.
         // On the target configs (Lite/8GB, Med/16GB) this returns the FULL context —
         // no change, no performance loss. It only shrinks when RAM is genuinely tight.
-        const memPlan = planForMemory(settings.model, ramGB);
+        let editsApproved = settings.permMode !== "ask";
+        const testEditsExplicit = explicitlyRequestsTestEdits(text);
+        const lockExistingTests = looksLikeDebug(text) && !testEditsExplicit;
+        const isTestFile = (rel: string) => isProtectedTestPath(rel);
+        const scopedCtx = {
+          scope: sess.scope,
+          scopeKind: sess.scopeKind,
+          fullDisk: settings.fullDiskAccess,
+        } as const;
+
+        const requestLiveApproval = (what: string, detail: string): Promise<boolean> => {
+          if (settings.permMode === "bypass") return Promise.resolve(true);
+          return new Promise((resolve) => {
+            liveGateRef.current = resolve;
+            setPending({ type: "gate", msgId: agentMsg.id, gate: { what, detail }, resume: [] });
+            setRunning(false);
+          });
+        };
 
         // write one file through the guarded bridge; emit a compact row, not code
-        const writeOne = async (rel: string, content: string): Promise<boolean> => {
+        const writeOne = async (rel: string, content: string, opts: { silent?: boolean } = {}): Promise<boolean> => {
           if (!rel || !canWrite) return false;
+          if (lockExistingTests && isTestFile(rel)) {
+            const reason = `EDIT ${rel}: rejected by the test-integrity gate; repair source code, not the failing test`;
+            writeFeedback.push(reason);
+            appendEvent(sess.id, agentMsg.id, { kind: "step", text: `⛔ refused to rewrite ${rel} — failing tests are evidence, not the fix` });
+            return false;
+          }
+          if (!editsApproved) {
+            editsApproved = await requestLiveApproval(
+              `Edit files inside ${scopeName}`,
+              "This approval covers in-scope file edits for the current run only."
+            );
+            if (!editsApproved) {
+              appendEvent(sess.id, agentMsg.id, { kind: "say", plain: "I left the files unchanged because edit permission was declined.", dev: "write gate declined" });
+              return false;
+            }
+            setRunning(true);
+          }
           const abs = resolveInScope(sess.scope, sess.scopeKind, rel);
           let old: string | null = null;
           try {
-            const r = await window.veylaro!.readFile?.(abs);
-            if (r?.ok) old = r.content ?? null;
+            const r = await window.veylaro!.readFile?.(abs, scopedCtx);
+            if (r?.ok) old = r.content ?? "";
+            else if (r?.exists) {
+              const reason = `EDIT ${rel}: rejected because the existing file could not be snapshotted (${r.error || "read failed"})`;
+              writeFeedback.push(reason);
+              appendEvent(sess.id, agentMsg.id, { kind: "step", text: `⛔ refused to overwrite ${rel} — I could not capture a rollback snapshot` });
+              return false;
+            }
           } catch { /* new file */ }
           // No-op guard: a rewrite that's identical to what's already on disk isn't
           // progress. Skip it so Laro can't spin re-saving the same file ("adding a
           // border", "adding padding"…) burning steps, time and RAM for nothing.
           if (old !== null && old.trim() === content.trim()) return false;
-          const res = await window.veylaro!.writeFile!(abs, content, {
-            scope: sess.scope,
-            scopeKind: sess.scopeKind,
-            fullDisk: settings.fullDiskAccess,
-            confirmed: settings.permMode !== "ask",
-          });
+          if (!runSnapshots.has(rel)) runSnapshots.set(rel, old);
+          const res = await window.veylaro!.writeFile!(abs, content, { ...scopedCtx, confirmed: editsApproved });
           if (!res.ok) {
             appendEvent(sess.id, agentMsg.id, {
               kind: "say",
               plain: `⛔ I couldn't write ${rel} — ${res.error || "the guard blocked it (it's outside this project's scope)"}.`,
               dev: "guarded write refused",
             });
+            writeFeedback.push(`EDIT ${rel}: rejected (${res.error || "write guard blocked it"})`);
             return false;
           }
           const { plus, minus, op } = diffCounts(old, content);
-          writtenPaths.push(rel);
-          appendEvent(sess.id, agentMsg.id, {
-            kind: "file",
-            path: rel,
-            op,
-            plus,
-            minus,
-            snippet: { del: [], add: content.split("\n").slice(0, 3) },
-          });
+          if (!opts.silent) {
+            writtenPaths.push(rel);
+            appendEvent(sess.id, agentMsg.id, {
+              kind: "file",
+              path: rel,
+              op,
+              plus,
+              minus,
+              snippet: { del: [], add: content.split("\n").slice(0, 3) },
+            });
+          }
+          return true;
+        };
+
+        /** Restore the repository to the exact state before this run. Failed
+            execution-gated work never survives on disk. A null snapshot means
+            the model created that file, so the rollback bridge removes it. */
+        const rollbackRun = async (reason: string): Promise<boolean> => {
+          if (!runSnapshots.size || runRolledBack) return true;
+          const entries = [...runSnapshots.entries()].reverse();
+          const failures: string[] = [];
+          for (const [rel, original] of entries) {
+            const abs = resolveInScope(sess.scope, sess.scopeKind, rel);
+            const result = await window.veylaro?.restoreFile?.(abs, original, { ...scopedCtx, confirmed: true, rollback: true });
+            if (!result?.ok) failures.push(`${rel}: ${result?.error || "restore bridge unavailable"}`);
+          }
+          if (failures.length) {
+            appendEvent(sess.id, agentMsg.id, { kind: "step", text: `⛔ rollback incomplete — ${failures.slice(0, 2).join("; ")}` });
+            return false;
+          }
+          runRolledBack = true;
+          appendEvent(sess.id, agentMsg.id, { kind: "restore", label: reason });
           return true;
         };
 
@@ -754,13 +853,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           appendEvent(sess.id, agentMsg.id, {
             kind: "browse",
             url,
-            summary: `opened ${label} in the Viewport — looking at the live page`,
+            summary: `loaded ${label} in the Viewport; visual and functional checks remain separate evidence`,
             steps: [
               { x: 50, y: 20, action: "look", note: "👀 opening it to see it for myself" },
               { x: 38, y: 42, action: "move", note: "scanning the layout" },
               { x: 62, y: 55, action: "move", note: "checking the key pieces" },
               { x: 50, y: 60, action: "scroll", note: "reading it top to bottom" },
-              { x: 50, y: 30, action: "look", note: "✓ it renders — looks right" },
+              { x: 50, y: 30, action: "look", note: "page loaded — checking the rendered result" },
             ],
           });
         };
@@ -772,17 +871,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (!canWrite) return false;
           // 1) dev-server project?
           let pkg: any = null;
-          try { const r = await window.veylaro!.readFile?.(`${scopeBase}/package.json`); if (r?.ok && r.content) pkg = JSON.parse(r.content); } catch { /* none */ }
+          try { const r = await window.veylaro!.readFile?.(`${scopeBase}/package.json`, scopedCtx); if (r?.ok && r.content) pkg = JSON.parse(r.content); } catch { /* none */ }
           const scripts = pkg?.scripts || {};
           const dev = scripts.dev ? "dev" : scripts.start ? "start" : scripts.serve ? "serve" : null;
           if (dev && window.veylaro!.serve) {
             if (announce) appendEvent(sess.id, agentMsg.id, { kind: "step", text: "🚀 starting the dev server and opening it in the Viewport…" });
-            let res = await window.veylaro!.serve(`npm run ${dev}`, scopeBase);
-            if (!res.ok && /exited|not found|cannot find module|ENOENT/i.test(res.error || "")) {
-              appendEvent(sess.id, agentMsg.id, { kind: "step", text: "📦 installing dependencies first…" });
-              await runOne("npm install");
-              res = await window.veylaro!.serve(`npm run ${dev}`, scopeBase);
-            }
+            const res = await window.veylaro!.serve(`npm run ${dev}`, scopeBase, { ...scopedCtx, confirmed: editsApproved });
             if (res.ok && res.url) { openInViewport(res.url, `the dev server (${res.url})`); return true; }
             appendEvent(sess.id, agentMsg.id, { kind: "step", text: `⚠️ couldn't start the dev server: ${(res.error || "unknown").slice(0, 140)}` });
           }
@@ -790,7 +884,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           let html = writtenPaths.find((p) => /(^|\/)index\.html$/i.test(p)) || writtenPaths.find((p) => /\.html$/i.test(p));
           if (!html) {
             try {
-              const d = await window.veylaro!.listDir?.(scopeBase);
+              const d = await window.veylaro!.listDir?.(scopeBase, scopedCtx);
               const hit = d?.entries?.find((e) => /^index\.html$/i.test(e.name)) || d?.entries?.find((e) => /\.html$/i.test(e.name));
               if (hit) html = hit.name;
             } catch { /* none */ }
@@ -808,18 +902,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // disk, fork bombs, sudo rm…) are hard-blocked and NEVER run, in any mode.
         // Merely destructive ones (rm -r, git reset --hard, drop table…) are skipped
         // unless the user has explicitly switched on full-auto (bypass).
-        const runOne = async (cmd: string): Promise<{ ok: boolean; out: string; blocked?: boolean }> => {
+        const runOne = async (
+          cmd: string,
+          policyOverride?: "repair" | "build",
+        ): Promise<{ ok: boolean; out: string; blocked?: boolean }> => {
           if (!window.veylaro?.exec) return { ok: false, out: "no shell in this environment" };
+          const policy = policyOverride ?? (looksLikeBuild(text) && !lockExistingTests ? "build" : "repair");
+          const decision = classifyModelCommand(cmd, { mode: policy });
+          if (!decision.allowed) {
+            appendEvent(sess.id, agentMsg.id, { kind: "cmd", cmd, out: `⛔ blocked by the model-command policy — ${decision.reason}`, ok: false });
+            return { ok: false, out: `blocked (${decision.classification})`, blocked: true };
+          }
           // confirmed:true lets destructive-but-not-catastrophic commands through only
           // in bypass; otherwise the guard returns needsConfirm and we skip cleanly.
-          const r = await window.veylaro.exec(cmd, sess.scope, { confirmed: settings.permMode === "bypass" });
+          let r = await window.veylaro.exec(cmd, scopeBase, {
+            ...scopedCtx,
+            confirmed: settings.permMode === "bypass",
+            modelInitiated: true,
+            policy,
+          });
           if (r.blocked) {
             appendEvent(sess.id, agentMsg.id, { kind: "cmd", cmd, out: "⛔ blocked — this command can damage the machine and is never run.", ok: false });
             return { ok: false, out: "blocked (dangerous command)", blocked: true };
           }
           if (r.needsConfirm) {
-            appendEvent(sess.id, agentMsg.id, { kind: "cmd", cmd, out: "⚠️ skipped — destructive command. Switch to full-auto in the composer if you want these to run.", ok: false });
-            return { ok: false, out: "skipped (destructive; not auto-run)", blocked: true };
+            const approved = await requestLiveApproval(
+              `Run a destructive command: ${cmd}`,
+              "Veylaro's hard blocklist still applies even when you approve."
+            );
+            if (!approved) {
+              appendEvent(sess.id, agentMsg.id, { kind: "cmd", cmd, out: "Skipped — permission declined.", ok: false });
+              return { ok: false, out: "skipped (permission declined)", blocked: true };
+            }
+            setRunning(true);
+            r = await window.veylaro.exec(cmd, scopeBase, { ...scopedCtx, confirmed: true, modelInitiated: true, policy });
           }
           appendEvent(sess.id, agentMsg.id, { kind: "cmd", cmd, out: (r.out || "").slice(0, 1200), ok: !!r.ok });
           return { ok: !!r.ok, out: r.out || "", blocked: false };
@@ -845,6 +961,51 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               return;
             }
 
+            // These are deterministic product facts, not inference jobs. They
+            // must stay instant even when the model is cold, and a runtime
+            // identity answer must come from the detected endpoint rather than
+            // a configured alias.
+            if (fastPath) {
+              const detectedTier = tierFromModelName(liveModel || "");
+              const instant = runtimeFactReply(
+                text,
+                liveModel,
+                detectedTier ? MODELS[detectedTier].name : modelName,
+              ) || instantGreetingReply(text, stRef.current.account?.name)
+                || verifiedArithmeticReply(text);
+              if (instant) {
+                appendEvent(sess.id, agentMsg.id, { kind: "say", plain: instant, dev: "deterministic verified path · no generation needed" });
+                finishRun();
+                return;
+              }
+            }
+
+            // Lazy engine start. The app shell stays light; only the first real
+            // model turn launches MLX and loads weights. Every later turn reuses
+            // that resident process until the idle/memory guard releases it.
+            const wasWarm = isModelWarm();
+            if (!wasWarm) setStreamText("Loading Laro into memory — this happens once, then replies stay warm…");
+            const ready = await ensureLocalEngine(settings.engineUrl, settings.engineModel, runSku);
+            if (!ready.ok) throw new Error(ready.error || "the local engine did not start");
+            // An MLX endpoint only becomes reachable after the checkpoint is loaded.
+            // Mark it warm now, not after token one, so this same request never shows
+            // a second fake loading phase and later turns reuse the resident model.
+            markModelWarm();
+            activeEngineModel = ready.model || (await detectLiveModel(settings.engineUrl)) || settings.engineModel;
+            if (ready.tier) runSku = ready.tier;
+            modelName = MODELS[runSku].name;
+            memPlan = planForMemory(runSku, ramGB);
+            setLiveModel(activeEngineModel);
+            setSt((previous) => ({
+              ...previous,
+              settings: {
+                ...previous.settings,
+                engine: "veylaro",
+                engineModel: activeEngineModel,
+                ...(ready.tier ? { model: ready.tier } : {}),
+              },
+            }));
+
             // optional live web grounding (query only ever leaves the machine)
             const wantsWeb =
               settings.internet &&
@@ -852,34 +1013,46 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               /\b(search|look ?up|latest|current|newest|today|docs?|documentation|version|price|news|20\d\d)\b/i.test(text);
             let searchCtx = "";
             if (wantsWeb) {
-              const q = text.slice(0, 90);
-              setSearching(q);
-              const bg = pushBg("Searching the web", q);
-              const results = await webSearch(q);
-              setSearching(null);
-              doneBg(bg, !!results, results ? `${results.length} sources read locally` : "no live results — continuing offline");
-              if (results && results.length) {
-                appendEvent(sess.id, agentMsg.id, { kind: "web", query: q, results });
-                searchCtx = resultsToContext(q, results);
+              const q = privacySafeSearchQuery(text);
+              if (q) {
+                setSearching(q);
+                const bg = pushBg("Searching the web", q);
+                const results = await webSearch(q);
+                setSearching(null);
+                doneBg(bg, !!results, results ? `${results.length} public sources read` : "no live results — continuing offline");
+                if (results && results.length) {
+                  appendEvent(sess.id, agentMsg.id, { kind: "web", query: q, results });
+                  searchCtx = resultsToContext(q, results);
+                }
+              } else {
+                appendEvent(sess.id, agentMsg.id, { kind: "step", text: "🔒 live search withheld — the request looked like code, credentials, a local path, or personal data" });
               }
             }
 
             // ---- casual chat: one short reply, no build machinery ----
             if (fastPath) {
+              const verifiedEvents = sess.msgs
+                .flatMap((message) => message.events || [])
+                .filter((event): event is Extract<AgentEvent, { kind: "verify" }> => event.kind === "verify");
+              const latestVerified = verifiedEvents[verifiedEvents.length - 1];
+              const verifiedActivity: VerifiedActivity | undefined = latestVerified
+                ? { target: latestVerified.target, ok: latestVerified.ok, detail: latestVerified.detail }
+                : undefined;
               const sys: ChatMsg[] = [{
                 role: "system",
-                content: laroContext(ramGB) + "\n\nYou are Laro, built by Veylaro Labs — never say another company made you, and never claim a knowledge cutoff. This is casual conversation: reply naturally in a sentence or two, with real personality and opinions. No plan, no preamble, no technical footer.",
+                content: `You are Laro inside Veylaro Code. Reply to casual conversation naturally in one or two short sentences. Be warm, sharp, lightly playful when it fits, and specific to what the person said. No plan, preamble, generic sales pitch, or technical footer. Never invent facts, freshness, actions, or provenance. Runtime evidence: ${verifiedActivity ? `${verifiedActivity.target} ${verifiedActivity.ok ? "passed" : "failed"}; ${verifiedActivity.detail || "no further detail"}` : "no verified task or command result is recorded"}.`,
               }];
               if (searchCtx) sys.push({ role: "system", content: `${GROUNDING_NOTE}\n\n${searchCtx}` });
-              setStreamText(isModelWarm() ? "" : "⏳ Loading Laro into memory…");
+              setStreamText("");
               let acc = "";
               let first = false;
-              for await (const part of veylaroChat(settings.engineUrl, settings.engineModel, [...sys, { role: "user", content: text }], settings.model, false, signal, { num_predict: 220, num_ctx: 2048, temperature: 0.4 })) {
+              for await (const part of veylaroChat(settings.engineUrl, activeEngineModel, [...sys, { role: "user", content: text }], runSku, false, signal, { num_predict: 120, num_ctx: 2048, temperature: 0.35 })) {
                 if (part.type === "text") { if (!first) { first = true; markModelWarm(); acc = ""; } acc += part.chunk; setStreamText(acc); }
               }
+              const clean = calibrateCasualReply(text, cleanAssistantText(acc, 500), verifiedActivity);
               appendEvent(sess.id, agentMsg.id, {
                 kind: "say",
-                plain: acc.trim() || "…the model returned an empty reply. Give me one more go — the weights may still be warming up.",
+                plain: clean || "I couldn't produce a reliable reply on that pass. The output was empty or repetitive, so I discarded it instead of showing garbage.",
                 dev: `${modelName} · on your machine`,
               });
               finishRun();
@@ -887,12 +1060,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }
 
             // ---- build / agent path: keeps going until the job is done ----
+            const readVerificationInput = async (): Promise<{ packageJson?: string; rootEntries?: string[] }> => {
+              let packageJson: string | undefined;
+              try {
+                const r = await window.veylaro!.readFile?.(`${scopeBase}/package.json`, scopedCtx);
+                if (r?.ok && r.content) packageJson = r.content;
+              } catch { /* no package.json */ }
+              let rootEntries: string[] | undefined;
+              try {
+                const listed = await window.veylaro!.listDir?.(scopeBase, scopedCtx);
+                rootEntries = (listed?.entries || []).map((item) => item.name);
+              } catch { /* no supported repository shape */ }
+              return { packageJson, rootEntries };
+            };
+            const detectVerificationCmds = async (): Promise<string[]> => verificationCommands(await readVerificationInput());
+            const detectTestCmd = async (): Promise<string | null> => reproductionCommand(await readVerificationInput());
+
             // LEAN prompt on purpose: a small local model builds fast from short,
             // direct instructions and gets chatty/slow under a heavy prompt stack.
             // So the build path is just: identity+directive + the file protocol.
             const isOwner = (st.account?.email || "").trim().toLowerCase() === OWNER_EMAIL;
             const sys: ChatMsg[] = [
-              { role: "system", content: laroContext(ramGB) + "\n\n" + SOVEREIGN_FORGE_PROMPT + (isOwner ? "\n\nDEVELOPER BUILD: you're talking to your maker. Full depth, no beginner framing, no safety hedging on ordinary work." : "") },
+              { role: "system", content: laroContext(ramGB) + "\n\n" + SOVEREIGN_FORGE_PROMPT + "\n\n" + EXECUTION_LATTICE_PROMPT + (isOwner ? "\n\nDEVELOPER BUILD: you're talking to the owner. Full engineering depth and no beginner framing." : "") },
             ];
             if (canWrite) {
               sys.push({ role: "system", content: `${FILE_PROTOCOL_PROMPT}\n\nProject folder for this session: ${sess.scope}\nEvery path you write is relative to that folder.` });
@@ -906,12 +1095,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const history = timelineForPrompt(sess.scope);
             if (history) sys.push({ role: "system", content: history });
 
+            const verificationInput = await readVerificationInput();
+            sys.push({
+              role: "system",
+              content: compileExecutionContract({
+                request: text,
+                scope: sess.scope,
+                existingProject: !!verificationInput.rootEntries?.length,
+                testEditsLocked: lockExistingTests,
+                verification: verificationCommands(verificationInput),
+              }),
+            });
             const convo: ChatMsg[] = [...sys, { role: "user", content: `[project folder: ${sess.scope}]\n${text}` }];
+            try {
+              const root = await window.veylaro!.listDir?.(scopeBase, scopedCtx);
+              if (root?.ok && root.entries?.length) {
+                const map = root.entries.slice(0, 80).map((entry) => `${entry.dir ? "dir" : "file"}: ${entry.name}`).join("\n");
+                convo.push({ role: "user", content: `Observed project root (real filesystem listing):\n${map}\n\nInspect relevant existing files with @@READ before changing them.` });
+              }
+            } catch { /* root map is best effort */ }
             // Memory Guard note — only when it actually had to intervene on a tight machine.
             if (memPlan.fits === "downshift" || memPlan.fits === "tight") {
               appendEvent(sess.id, agentMsg.id, { kind: "step", text: `💾 ${memPlan.note}` });
             }
-            const maxSteps = settings.model === "lite" ? 4 : settings.model === "max" ? 8 : 6;
+            const broadMission = /\b(full|complete|entire|end[- ]to[- ]end|saas|game|repository|repo|debug|repair|migrate|refactor)\b/i.test(text);
+            const maxSteps = runSku === "lite" ? (broadMission ? 10 : 6) : runSku === "max" ? (broadMission ? 16 : 10) : (broadMission ? 13 : 8);
             let filesWritten = 0;
             let lastNarration = "";
             let done = false;
@@ -919,6 +1127,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             let sawFirstToken = false;
             let lastStep = "";
             let nudgedToBuild = false;
+            let commandFailures = 0;
+            let verification: "passed" | "failed" | "not-run" = "not-run";
+            let verificationPlan: string[] = [];
             const stepLine = (t: string) => {
               const line = t.slice(0, 180).trim();
               if (line && line !== lastStep) {
@@ -927,44 +1138,264 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               }
             };
 
-            // REALITY CLUSTER — if the project has real tests, run them and repair
-            // against the ACTUAL failure (expected-vs-actual), up to 2 attempts. The
-            // grader proved a small model fixes far more when it sees the real error
-            // than when it patches blind. Never claims "works" without a green run.
-            const detectTestCmd = async (): Promise<string | null> => {
-              try {
-                const r = await window.veylaro!.readFile?.(`${scopeBase}/package.json`);
-                if (r?.ok && r.content) {
-                  const t = JSON.parse(r.content)?.scripts?.test;
-                  if (t && !/no test specified|exit 1/i.test(t)) return "npm test";
-                }
-              } catch { /* no package.json */ }
+            // REALITY CLUSTER — the contract above and this final plan are both
+            // compiled from repository evidence rather than model claims.
+            const normalizeRel = (value: string): string => {
+              const out: string[] = [];
+              for (const part of value.replace(/\\/g, "/").split("/")) {
+                if (!part || part === ".") continue;
+                if (part === "..") out.pop();
+                else out.push(part);
+              }
+              return out.join("/");
+            };
+            const readEvidenceFile = async (rel: string): Promise<{ rel: string; content: string } | null> => {
+              const safe = normalizeRel(rel);
+              if (!safe || safe.startsWith("../")) return null;
+              const variants = /\.[a-z0-9]+$/i.test(safe)
+                ? [safe]
+                : [safe, `${safe}.ts`, `${safe}.tsx`, `${safe}.js`, `${safe}.jsx`, `${safe}/index.ts`, `${safe}/index.js`];
+              for (const candidate of variants) {
+                const result = await window.veylaro!.readFile?.(resolveInScope(sess.scope, sess.scopeKind, candidate), scopedCtx);
+                if (result?.ok) return { rel: candidate, content: (result.content || "").slice(0, 7000) };
+              }
               return null;
             };
-            const verifyAndRepair = async (baseSys: ChatMsg[]) => {
-              const testCmd = await detectTestCmd();
-              if (!testCmd || signal.aborted) return;
-              stepLine("🧪 running the tests to check my work…");
-              let r = await runOne(testCmd);
-              if (r.ok) { appendEvent(sess.id, agentMsg.id, { kind: "verify", target: "npm test", ok: true, detail: "tests pass — verified by running them, not assumed" }); return; }
-              for (let att = 1; att <= 2 && !signal.aborted; att++) {
-                stepLine(`🔴 tests failing — reading the error and fixing (attempt ${att})`);
-                const conv: ChatMsg[] = [...baseSys, { role: "user", content: `The tests are failing:\n${r.out.slice(0, 900)}\n\nRead the failure — it shows expected vs actual — then fix the source file(s) with @@FILE … @@END. Do NOT change the test files.` }];
-                const p = new StreamParser();
-                for await (const part of veylaroChat(settings.engineUrl, settings.engineModel, conv, settings.model, false, signal, { num_ctx: memPlan.numCtx })) {
-                  if (part.type !== "text") continue;
-                  for (const ev of p.push(part.chunk)) {
-                    if (ev.t === "file") await writeOne(ev.path, ev.content);
-                    else if (ev.t === "narrate") stepLine(ev.text);
+            const collectFailureEvidence = async (output: string): Promise<string> => {
+              const decoded = (() => { try { return decodeURIComponent(output.replace(/file:\/\//g, "")); } catch { return output; } })();
+              const scope = scopeBase.replace(/\\/g, "/").replace(/\/$/, "");
+              const paths = new Set<string>();
+              for (const line of decoded.split("\n")) {
+                const normalized = line.replace(/\\/g, "/");
+                const at = normalized.indexOf(scope + "/");
+                if (at >= 0) {
+                  const tail = normalized.slice(at + scope.length + 1);
+                  const hit = tail.match(/^([^:\s)]+\.(?:[cm]?[jt]sx?|py|rb|rs|go))/i);
+                  if (hit) paths.add(normalizeRel(hit[1]));
+                }
+                for (const match of normalized.matchAll(/(?:^|[\s(])((?:src|test|tests|__tests__)[/][^:\s)]+\.(?:[cm]?[jt]sx?|py|rb|rs|go))/gi)) paths.add(normalizeRel(match[1]));
+              }
+
+              const evidence: Array<{ rel: string; content: string }> = [];
+              for (const rel of [...paths].slice(0, 4)) {
+                const file = await readEvidenceFile(rel);
+                if (file && !evidence.some((item) => item.rel === file.rel)) evidence.push(file);
+              }
+              // Resolve local imports from the observed failure files. This turns a
+              // stack trace into the smallest real source window before the model
+              // gets a chance to invent a repository shape.
+              for (const file of [...evidence]) {
+                const dir = file.rel.includes("/") ? file.rel.slice(0, file.rel.lastIndexOf("/")) : "";
+                const imports = [...file.content.matchAll(/(?:from\s*|require\s*\()\s*["'](\.[^"']+)["']/g)].map((match) => match[1]);
+                for (const spec of imports.slice(0, 4)) {
+                  const imported = await readEvidenceFile(normalizeRel(`${dir}/${spec}`));
+                  if (imported && !evidence.some((item) => item.rel === imported.rel)) evidence.push(imported);
+                  if (evidence.length >= 7) break;
+                }
+                if (evidence.length >= 7) break;
+              }
+              return evidence.map((file) => `OBSERVED FILE ${file.rel}:\n${file.content}`).join("\n\n");
+            };
+            const verifyAndRepair = async (baseSys: ChatMsg[], testCmd?: string): Promise<"passed" | "failed" | "not-run"> => {
+              if (!testCmd || signal.aborted) return "not-run";
+              stepLine(`🧪 running verification: ${testCmd}`);
+              let r = await runOne(testCmd, "build");
+              if (r.ok) { appendEvent(sess.id, agentMsg.id, { kind: "verify", target: testCmd, ok: true, detail: "command passed — verified by execution, not assumed" }); return "passed"; }
+              const budget = evidenceBudget(runSku);
+              const seeds = [1, 7, 19, 42, 97].slice(0, budget.candidates);
+              let failureOutput = r.out;
+
+              // Bounded semantic lane: before spending more model tokens, derive a
+              // few auditable arithmetic alternatives from the observed source.
+              // Every proposal still lives or dies by the unchanged project tests.
+              const semanticEvidence = await collectFailureEvidence(failureOutput);
+              const semanticPaths = [...new Set([...semanticEvidence.matchAll(/^OBSERVED FILE\s+([^:]+):/gm)]
+                .map((match) => normalizeRel(match[1]))
+                .filter((rel) => rel && !isTestFile(rel)))];
+              let semanticIndex = 0;
+              for (const rel of semanticPaths) {
+                const observed = await window.veylaro!.readFile?.(resolveInScope(sess.scope, sess.scopeKind, rel), scopedCtx);
+                if (!observed?.ok || !observed.content) continue;
+                const candidates = synthesizeSemanticRepairs(rel, observed.content, failureOutput);
+                for (const candidate of candidates) {
+                  semanticIndex++;
+                  stepLine(`🧮 executing semantic repair candidate ${semanticIndex}…`);
+                  if (!(await writeOne(candidate.path, candidate.content, { silent: true }))) continue;
+                  const result = await runOne(testCmd, "build");
+                  if (result.ok) {
+                    const { plus, minus, op } = diffCounts(observed.content, candidate.content);
+                    writtenPaths.push(candidate.path);
+                    filesWritten++;
+                    appendEvent(sess.id, agentMsg.id, { kind: "file", path: candidate.path, op, plus, minus, snippet: { del: [], add: candidate.content.split("\n").slice(0, 3) } });
+                    appendEvent(sess.id, agentMsg.id, {
+                      kind: "verify",
+                      target: testCmd,
+                      ok: true,
+                      detail: `semantic candidate ${semanticIndex} survived unchanged tests — verified by execution`,
+                    });
+                    return "passed";
+                  }
+                  failureOutput = result.out;
+                  const undo = await window.veylaro?.restoreFile?.(resolveInScope(sess.scope, sess.scopeKind, rel), observed.content, { ...scopedCtx, confirmed: true, rollback: true });
+                  if (!undo?.ok) {
+                    stepLine("⛔ semantic candidate failed and rollback could not be proven");
+                    appendEvent(sess.id, agentMsg.id, { kind: "verify", target: testCmd, ok: false, detail: "repair rollback failed; the run cannot be credited" });
+                    return "failed";
+                  }
+                  const baseline = await runOne(testCmd, "build");
+                  if (baseline.ok) {
+                    appendEvent(sess.id, agentMsg.id, { kind: "verify", target: testCmd, ok: true, detail: "the restored baseline passed after rejecting a flaky candidate" });
+                    return "passed";
+                  }
+                  failureOutput = baseline.out;
+                  stepLine(`semantic candidate ${semanticIndex} failed real tests and was rolled back`);
+                }
+              }
+
+              for (let index = 0; index < seeds.length && !signal.aborted; index++) {
+                const seed = seeds[index];
+                const evidence = await collectFailureEvidence(failureOutput);
+                const observedPaths = [...evidence.matchAll(/^OBSERVED FILE\s+([^:]+):/gm)]
+                  .map((match) => normalizeRel(match[1]))
+                  .filter((rel) => rel && !isTestFile(rel));
+                const expectedPaths = [...new Set(observedPaths.length
+                  ? observedPaths
+                  : writtenPaths.filter((rel) => !isTestFile(rel)).slice(-4))];
+                if (!expectedPaths.length) {
+                  stepLine("⛔ repair tournament stopped — the failure did not identify an observed source file");
+                  break;
+                }
+
+                stepLine(`🧪 testing repair candidate ${index + 1}/${seeds.length} against unchanged tests…`);
+                const repairBrief = failureRepairBrief(failureOutput, expectedPaths);
+                const conv: ChatMsg[] = [...baseSys, {
+                  role: "user",
+                  content: `Original task: ${text}\nProject folder: ${sess.scope}\n\n${repairBrief}\n\n${evidence ? `${evidence}\n\n` : ""}Return only complete replacements for the smallest necessary allowed source files using @@FILE … @@END. Never edit tests, invent a path, weaken an assertion, or claim success. The runtime will execute unchanged checks and automatically discard losing candidates.`,
+                }];
+
+                const collectTurn = async (messages: ChatMsg[]): Promise<string> => {
+                  let output = "";
+                  for await (const part of veylaroChat(settings.engineUrl, activeEngineModel, messages, runSku, false, signal, {
+                    num_ctx: memPlan.numCtx,
+                    num_predict: 900,
+                    temperature: 0.2,
+                    seed,
+                  })) {
+                    if (part.type === "text") output += part.chunk;
+                  }
+                  return output;
+                };
+
+                let output = await collectTurn(conv);
+                let files = extractRepairFiles(output, expectedPaths);
+                if (!files.length) {
+                  const parser = new StreamParser();
+                  const events = [...parser.push(output.endsWith("\n") ? output : `${output}\n`), ...parser.flush()];
+                  const observations: string[] = [];
+                  for (const event of events) {
+                    if (event.t !== "read") continue;
+                    const seen = await window.veylaro!.readFile?.(resolveInScope(sess.scope, sess.scopeKind, event.path), scopedCtx);
+                    observations.push(seen?.ok
+                      ? `FILE ${event.path}:\n${(seen.content || "").slice(0, 7000)}`
+                      : `FILE ${event.path}: read failed (${seen?.error || "unknown"})`);
+                  }
+                  if (observations.length) {
+                    const follow = await collectTurn([...conv, { role: "assistant", content: output }, {
+                      role: "user",
+                      content: `Real read results:\n${observations.join("\n\n")}\n\nNow return the smallest complete source repair. Only these paths may be edited: ${expectedPaths.join(", ")}.`,
+                    }]);
+                    output += `\n${follow}`;
+                    files = extractRepairFiles(follow, expectedPaths);
                   }
                 }
-                for (const ev of p.flush()) if (ev.t === "file") await writeOne(ev.path, ev.content);
-                for (const f of salvageFences(p.liveNarration).files) await writeOne(f.path, f.content);
-                r = await runOne(testCmd);
-                if (r.ok) { appendEvent(sess.id, agentMsg.id, { kind: "verify", target: "npm test", ok: true, detail: `tests pass after ${att} repair${att === 1 ? "" : "s"} — verified by running them` }); return; }
+
+                files = files.filter((file) => !isTestFile(file.path));
+                if (!files.length) {
+                  stepLine(`candidate ${index + 1} rejected — no complete, in-scope source replacement`);
+                  continue;
+                }
+
+                const candidateBaseline = new Map<string, string | null>();
+                let candidateValid = true;
+                for (const file of files) {
+                  const seen = await window.veylaro!.readFile?.(resolveInScope(sess.scope, sess.scopeKind, file.path), scopedCtx);
+                  if (!seen?.ok) { candidateValid = false; break; }
+                  candidateBaseline.set(file.path, seen.content ?? null);
+                }
+                if (!candidateValid) {
+                  stepLine(`candidate ${index + 1} rejected — it targeted a source file not observed on disk`);
+                  continue;
+                }
+
+                let applied = 0;
+                for (const file of files) if (await writeOne(file.path, file.content, { silent: true })) applied++;
+                if (applied !== files.length) {
+                  let partialRestored = true;
+                  for (const [rel, original] of [...candidateBaseline.entries()].reverse()) {
+                    const undo = await window.veylaro?.restoreFile?.(resolveInScope(sess.scope, sess.scopeKind, rel), original, { ...scopedCtx, confirmed: true, rollback: true });
+                    if (!undo?.ok) partialRestored = false;
+                  }
+                  stepLine(partialRestored
+                    ? `candidate ${index + 1} rejected — its complete multi-file edit did not apply`
+                    : `⛔ candidate ${index + 1} partially applied and rollback could not be proven`);
+                  if (!partialRestored) break;
+                  continue;
+                }
+
+                const result = await runOne(testCmd, "build");
+                if (result.ok) {
+                  for (const file of files) {
+                    const original = candidateBaseline.get(file.path);
+                    const { plus, minus, op } = diffCounts(original ?? null, file.content);
+                    writtenPaths.push(file.path);
+                    filesWritten++;
+                    appendEvent(sess.id, agentMsg.id, { kind: "file", path: file.path, op, plus, minus, snippet: { del: [], add: file.content.split("\n").slice(0, 3) } });
+                  }
+                  appendEvent(sess.id, agentMsg.id, {
+                    kind: "verify",
+                    target: testCmd,
+                    ok: true,
+                    detail: `candidate ${index + 1}/${seeds.length} survived unchanged tests — verified by execution`,
+                  });
+                  return "passed";
+                }
+
+                let restored = true;
+                for (const [rel, original] of [...candidateBaseline.entries()].reverse()) {
+                  const undo = await window.veylaro?.restoreFile?.(resolveInScope(sess.scope, sess.scopeKind, rel), original, { ...scopedCtx, confirmed: true, rollback: true });
+                  if (!undo?.ok) restored = false;
+                }
+                stepLine(restored
+                  ? `candidate ${index + 1} failed real tests and was rolled back`
+                  : `⛔ candidate ${index + 1} failed and its rollback could not be proven`);
+                if (!restored) break;
+                const baseline = await runOne(testCmd, "build");
+                if (baseline.ok) {
+                  appendEvent(sess.id, agentMsg.id, { kind: "verify", target: testCmd, ok: true, detail: "the restored baseline passed after rejecting a flaky candidate" });
+                  return "passed";
+                }
+                failureOutput = baseline.out;
               }
-              appendEvent(sess.id, agentMsg.id, { kind: "verify", target: "npm test", ok: false, detail: `tests still failing — I'm not claiming this works. Last error: ${r.out.slice(0, 180)}` });
+              appendEvent(sess.id, agentMsg.id, { kind: "verify", target: testCmd, ok: false, detail: `verification still failing — I'm not claiming this works. Last error: ${compactFailureEvidence(failureOutput, 180)}` });
+              return "failed";
             };
+
+            // Reproduction-first debugging: a repair prompt gets the actual failing
+            // output before the model proposes a patch. This is the highest-leverage
+            // difference between blind code generation and real repository repair.
+            if (looksLikeDebug(text) && !signal.aborted) {
+              const reproductionCmd = await detectTestCmd();
+              if (reproductionCmd) {
+                stepLine("🔎 reproducing the failure before touching the fix…");
+                const reproduced = await runOne(reproductionCmd);
+                if (!reproduced.ok) {
+                  const evidence = await collectFailureEvidence(reproduced.out);
+                  convo.push({ role: "user", content: `Observed reproduction before editing:\n$ ${reproductionCmd}\n${compactFailureEvidence(reproduced.out, 1800)}\n\n${evidence ? `${evidence}\n\n` : ""}Use only this real repository evidence. Preserve passing behavior, make the smallest source repair, and do not edit tests. If a needed file is not shown, request it with @@READ instead of inventing it.` });
+                } else {
+                  convo.push({ role: "user", content: `The existing test command passed before editing ($ ${reproductionCmd}). Do not claim the reported bug is reproduced. Inspect repository evidence and add a focused regression check only if the user's contract makes the missing behavior clear.` });
+                }
+              }
+            }
 
             while (!done && step < maxSteps && !signal.aborted) {
               step++;
@@ -973,22 +1404,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               let wroteThisStep = 0;
               let ranThisStep = 0;
               let failedCmd: { cmd: string; out: string } | null = null;
+              let requestedDone = false;
+              const observations: string[] = [];
               // Smart-load: only the genuine cold load (model not warm in RAM) shows
               // "Loading…". Once warm, subsequent messages skip straight to "Working…".
               setStreamText(sawFirstToken || isModelWarm() ? "Working…" : "⏳ Loading Laro into memory — first reply takes a moment, then it's fast…");
 
-              for await (const part of veylaroChat(settings.engineUrl, settings.engineModel, convo, settings.model, false, signal, { num_ctx: memPlan.numCtx })) {
+              for await (const part of veylaroChat(settings.engineUrl, activeEngineModel, convo, runSku, false, signal, { num_ctx: memPlan.numCtx })) {
                 if (part.type !== "text") continue;
                 if (!sawFirstToken) { sawFirstToken = true; markModelWarm(); setStreamText("Working…"); }
                 raw += part.chunk;
                 for (const ev of parser.push(part.chunk)) {
                   if (ev.t === "file") { if (await writeOne(ev.path, ev.content)) { wroteThisStep++; filesWritten++; } }
+                  else if (ev.t === "read") {
+                    const abs = resolveInScope(sess.scope, sess.scopeKind, ev.path);
+                    const seen = await window.veylaro!.readFile?.(abs, scopedCtx);
+                    const result = seen?.ok
+                      ? `FILE ${ev.path}:\n${(seen.content || "").slice(0, 7000)}`
+                      : `FILE ${ev.path}: read failed (${seen?.error || "unknown error"})`;
+                    observations.push(result);
+                    stepLine(seen?.ok ? `🔎 read ${ev.path}` : `⚠️ couldn't read ${ev.path}`);
+                  }
                   else if (ev.t === "run") {
                     const r = await runOne(ev.cmd);
                     ranThisStep++;
-                    if (!r.ok && !r.blocked) failedCmd = { cmd: ev.cmd, out: r.out.slice(0, 400) };
+                    observations.push(`COMMAND $ ${ev.cmd}\n${r.out.slice(0, 3500)}\nexit: ${r.ok ? "success" : "failure"}`);
+                    if (!r.ok && !r.blocked) { failedCmd = { cmd: ev.cmd, out: r.out.slice(0, 400) }; commandFailures++; }
                   }
-                  else if (ev.t === "done") { done = true; }
+                  else if (ev.t === "done") { requestedDone = true; }
                   else if (ev.t === "narrate") { stepLine(ev.text); }   // persist each line
                 }
                 const w = parser.writing;
@@ -1001,10 +1444,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               const salv = canWrite ? salvageFences(parser.liveNarration) : { files: [], rest: parser.liveNarration };
               for (const f of salv.files) { if (await writeOne(f.path, f.content)) { wroteThisStep++; filesWritten++; } }
               const narration = (salv.files.length ? salv.rest : parser.liveNarration).trim();
-              if (narration) lastNarration = narration;
+              const cleanNarration = cleanAssistantText(narration);
+              if (cleanNarration) lastNarration = cleanNarration;
+              observations.push(...writeFeedback.splice(0));
 
               convo.push({ role: "assistant", content: raw });
-              if (signal.aborted || done) break;
+              if (signal.aborted) break;
+
+              const collapsed = collapseReason(raw);
+              if (collapsed && step < maxSteps) {
+                stepLine("output collapsed into repetition — discarding it and retrying cleanly");
+                convo.push({ role: "user", content: `Your previous output was rejected for ${collapsed}. Do not repeat markup or protocol tokens. Continue with one valid @@FILE block or one necessary @@RUN command.` });
+                continue;
+              }
 
               // Recovery cluster: a command failed — feed the real error back and let
               // Laro fix it, rather than stopping. This is what "don't give up" means.
@@ -1013,6 +1465,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 convo.push({ role: "user", content: `That command failed:\n$ ${failedCmd.cmd}\n${failedCmd.out}\n\nRecover: either fix it, use a different approach, or write the files directly without that command. Keep going until the task is done, then output @@DONE.` });
                 continue;
               }
+              // Successful reads and commands are evidence, not transcript-only
+              // decoration. Return them to the next model turn so repository work is
+              // an observe → edit → execute loop rather than blind generation.
+              if (observations.length && step < maxSteps) {
+                convo.push({
+                  role: "user",
+                  content: `Real tool results from this machine:\n\n${observations.join("\n\n")}\n\nContinue from this evidence. Do not repeat a read or command unless the state changed. ${requestedDone ? "You requested completion before seeing these results; verify them first, then output @@DONE only if the contract is satisfied." : ""}`,
+                });
+                continue;
+              }
+              if (requestedDone) { done = true; break; }
               // No file ops this step. If Laro just described a plan (which small
               // models do), nudge it HARD to start writing files instead of stopping.
               // Only give up if a second nudge still produces nothing (real Q&A).
@@ -1028,26 +1491,88 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               }
             }
 
-            // Reality Cluster: verify against the project's own tests and self-correct
-            // before handing back. Only runs when the project actually has tests.
-            if (filesWritten > 0 && !signal.aborted) await verifyAndRepair(sys);
+            if (signal.aborted) throw new DOMException("run stopped", "AbortError");
 
-            // Clean recap — a couple of factual sentences about what got built, NOT
-            // the raw thinking. The persistent step lines above already showed the play-by-play.
-            let recap: string;
+            // Reality Cluster: execute every repository-declared check in a fixed,
+            // bounded order. After any repairs, rerun the complete plan once more so
+            // a lint/build fix cannot silently regress an earlier passing test.
+            if (filesWritten > 0 && !signal.aborted) {
+              verificationPlan = await detectVerificationCmds();
+              if (verificationPlan.length) {
+                verification = "passed";
+                for (const command of verificationPlan) {
+                  verification = await verifyAndRepair(sys, command);
+                  if (verification !== "passed") break;
+                }
+                if (verification === "passed") {
+                  stepLine("🧪 rerunning the complete verification plan for regression proof…");
+                  for (const command of verificationPlan) {
+                    const proof = await runOne(command, "build");
+                    appendEvent(sess.id, agentMsg.id, {
+                      kind: "verify",
+                      target: command,
+                      ok: proof.ok,
+                      detail: proof.ok ? "final regression proof passed" : "final regression proof failed",
+                    });
+                    if (!proof.ok) { verification = "failed"; break; }
+                  }
+                }
+              }
+            }
+            if (verification === "failed") {
+              await rollbackRun("Rejected failing run — restored the project to its pre-run state");
+            }
+
+            // Open the result before the recap so the summary never claims a Viewport
+            // check that has not actually happened yet.
+            const viewportOpened = !signal.aborted && filesWritten > 0 && !runRolledBack
+              ? await openLiveApp(true)
+              : false;
+
+            // Clean recap derived from observed file/command/test evidence. Model prose
+            // never decides whether the run says "done" or "verified".
             if (filesWritten > 0) {
               const names = [...new Set(writtenPaths)];
               const list = names.slice(0, 6).join(", ") + (names.length > 6 ? `, +${names.length - 6} more` : "");
-              recap = `Done — built it into ${scopeName}. Wrote ${filesWritten} file${filesWritten === 1 ? "" : "s"}: ${list}.` +
-                (writtenPaths.some((p) => /\.html$/i.test(p)) ? " Opened it in the Viewport to check it renders." : "");
+              const title = runRolledBack
+                ? "Rejected and rolled back"
+                : verification === "passed"
+                ? "Completed and verified"
+                : verification === "failed"
+                  ? "Built, but verification is still failing"
+                  : viewportOpened
+                    ? "Built and opened for review"
+                    : "Built; automated verification was unavailable";
+              const bullets = [
+                runRolledBack
+                  ? `Rejected the attempted changes to ${list}; the original files were restored.`
+                  : `Updated ${filesWritten} file${filesWritten === 1 ? "" : "s"} in ${scopeName}: ${list}.`,
+                runRolledBack
+                  ? "The unchanged project tests did not pass, so no candidate was promoted or left on disk."
+                  : verification === "passed"
+                  ? `All ${verificationPlan.length} repository verification command${verificationPlan.length === 1 ? "" : "s"} passed after the changes.`
+                  : verification === "failed"
+                    ? "At least one repository verification command still fails, so this run is not marked complete."
+                    : "No usable repository verification command was found; the changes are not claimed as verified.",
+              ];
+              if (viewportOpened) bullets.push("The running result was loaded in the Viewport; its visual score is reported separately.");
+              if (commandFailures > 0) bullets.push(`${commandFailures} command failure${commandFailures === 1 ? " was" : "s were"} encountered and kept in the transcript.`);
+              appendEvent(sess.id, agentMsg.id, {
+                kind: "recap",
+                title,
+                bullets,
+                commit: `${verification === "passed" && !runRolledBack ? "feat" : "rejected"}: update ${scopeName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project"}`,
+              });
             } else {
-              recap = lastNarration || "…the model returned an empty reply. Give it one more go — the weights may still be warming up.";
+              const answer = cleanAssistantText(lastNarration, 1200);
+              appendEvent(sess.id, agentMsg.id, {
+                kind: "say",
+                plain: answer || (looksLikeBuild(text)
+                  ? "I didn't complete this run: no valid file edit or command survived the output gate. I discarded the damaged output instead of pretending work was done."
+                  : "I couldn't produce a reliable answer on this pass; the output was empty or repetitive and was rejected."),
+                dev: `${modelName} · no verified change`,
+              });
             }
-            appendEvent(sess.id, agentMsg.id, {
-              kind: "say",
-              plain: recap,
-              dev: filesWritten ? `${modelName} · ${filesWritten} file${filesWritten === 1 ? "" : "s"} written on your machine` : `${modelName} · on your machine`,
-            });
             if (!canWrite && !fastPath) {
               appendEvent(sess.id, agentMsg.id, {
                 kind: "say",
@@ -1056,14 +1581,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               });
             }
             // remember what got built here, so next session Laro has continuity
-            if (filesWritten > 0) {
+            if (filesWritten > 0 && !runRolledBack) {
               recordMilestone(sess.scope, { task: text, files: writtenPaths, kind: "build" });
             }
-            // built something with a page in it? go look at it, on your behalf.
-            if (!signal.aborted && filesWritten > 0) await openLiveApp();
+            if (
+              verification === "passed" &&
+              !runRolledBack &&
+              settings.overnight &&
+              window.veylaro?.isDesktop
+            ) {
+              recordVerifiedPrecedent({
+                prompt: text,
+                scopeLabel: scopeName,
+                check: verificationPlan.join("; ") || "repository verification",
+                evidence: "Recorded only after the complete repository verification plan passed twice and the run completed without rollback.",
+                model: activeEngineModel,
+              });
+            }
           } catch (e: any) {
+            const restored = await rollbackRun(signal.aborted
+              ? "Stopped run — restored unverified edits"
+              : "Errored run — restored unverified edits");
             if (signal.aborted) {
-              appendEvent(sess.id, agentMsg.id, { kind: "say", plain: "Stopped — I left everything exactly where it was.", dev: "run aborted by user" });
+              appendEvent(sess.id, agentMsg.id, { kind: "say", plain: restored ? "Stopped — unverified edits from this run were rolled back." : "Stopped, but the rollback could not be fully proven. Review the changed files before continuing.", dev: "run aborted by user" });
             } else {
               appendEvent(sess.id, agentMsg.id, {
                 kind: "say",
@@ -1076,12 +1616,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         })();
 
         function finishRun() {
+          if (runEpochRef.current !== runEpoch) return;
           setStreamText(null);
           setStreamThink(null);
           setSearching(null);
           appendEvent(sess.id, agentMsg.id, { kind: "done", ms: 0 });
           setRunning(false);
-          abortRef.current = null;
+          if (abortRef.current === controller) abortRef.current = null;
         }
         return;
       }
@@ -1118,24 +1659,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     stopRun() {
       // abort the live stream + agent loop wherever it is; the run's own
       // catch/finally emits the "Stopped" line and clears running state.
-      abortRef.current?.abort();
+      const liveController = abortRef.current;
+      liveController?.abort();
+      liveGateRef.current?.(false);
+      liveGateRef.current = null;
       // the demo runner uses a timer chain, not a stream — clear that too
       if (timer.current) clearTimeout(timer.current);
       setPending(null);
-      setStreamText(null);
-      setStreamThink(null);
-      setRunning(false);
-      // free the weights from RAM now — you stopped, so nothing should linger
-      if (st.settings.engine === "veylaro") {
-        markModelCold();
-        unloadModel(st.settings.engineUrl, st.settings.engineModel);
+      if (liveController) {
+        // Keep the run locked until its asynchronous rollback and finally path
+        // complete. This prevents a new run racing with an old rollback.
+        setStreamText("Stopping and restoring unverified edits…");
+      } else {
+        setStreamText(null);
+        setStreamThink(null);
+        setRunning(false);
       }
+      // Stop cancels the mission, not the resident model. Smart Load keeps the
+      // checkpoint warm for the next turn and releases it after idle/pressure.
     },
 
     resolveGate(approve) {
       if (!pending || pending.type !== "gate" || !active) return;
       const { msgId, resume } = pending;
       setPending(null);
+      if (liveGateRef.current) {
+        const resolve = liveGateRef.current;
+        liveGateRef.current = null;
+        resolve(approve);
+        return;
+      }
       if (!approve) {
         appendEvent(active.id, msgId, {
           kind: "say",
@@ -1147,6 +1700,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       // approve: emit the gated event immediately, continue with the tail
       const [head, ...tail] = resume;
+      if (!head) return;
       appendEvent(active.id, msgId, head.ev);
       play(active.id, msgId, tail, st.settings.permMode);
     },
@@ -1205,7 +1759,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       let res: { out: string; ok: boolean };
       if (window.veylaro?.exec) {
         try {
-          res = await window.veylaro.exec(c, active.scope);
+          const cwd = active.scopeKind === "folder" ? active.scope : active.scope.replace(/[\\/][^\\/]*$/, "");
+          res = await window.veylaro.exec(c, cwd, {
+            scope: active.scope,
+            scopeKind: active.scopeKind,
+            fullDisk: st.settings.fullDiskAccess,
+          });
         } catch (e: any) {
           res = { out: String(e?.message || e), ok: false };
         }
@@ -1276,7 +1835,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               [{ role: "system", content: laroContext(ramGB) + "\n\n" + LARO_SIDE_CHARTER },
                ...history,
                { role: "user", content: t }],
-              "lite", false
+              tierFromModelName(st.settings.engineModel) || st.settings.model, false
             )) if (part.type === "text") acc += part.chunk;
             respond(acc || sideChatReply(t));
           } catch { respond(sideChatReply(t)); }

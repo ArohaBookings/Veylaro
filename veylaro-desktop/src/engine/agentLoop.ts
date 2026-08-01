@@ -32,7 +32,10 @@ Rules that matter:
 - The path is relative to the project folder you were given. Use real paths like src/App.tsx or index.html. Do not wrap the path in quotes or backticks.
 - Do NOT put the file's code anywhere else in your reply. The only place code goes is between @@FILE and @@END.
 - Before each file, write ONE short human line saying what you're doing, starting with an emoji: "✍️ Writing the dashboard layout" then the @@FILE block. Keep it to one line.
-- To run a terminal command, put it on its own line: @@RUN npm install
+- In an existing project, inspect before editing. Read a file with: @@READ src/App.tsx
+- To run a bounded verification command, put it on its own line: @@RUN npm test
+- Dependency installs and shell-composed commands are blocked. Work with the project's observed dependency set.
+- @@READ and @@RUN results are returned to you on the next turn. Use those real results; never guess what a file or command contains.
 - React to what you find, briefly, like a real engineer: "🔎 no package.json yet — scaffolding one first". Short lines, no headers, no restating the plan.
 - When the ENTIRE task is finished and every file is written, output @@DONE on its own line. Do not output @@DONE while there is still work left — if the app isn't complete, keep writing files.
 
@@ -53,19 +56,21 @@ That is the only way to build. Narrate in the chat, write the code into files.`;
 export type ParseEvent =
   | { t: "narrate"; text: string }
   | { t: "file"; path: string; content: string }
+  | { t: "read"; path: string }
   | { t: "run"; cmd: string }
   | { t: "done" };
 
 const FILE_OPEN = /^@@FILE\s+(.+?)\s*$/;
 const FILE_END = /^@@END\s*$/;
+const READ_LINE = /^@@READ\s+(.+?)\s*$/;
 const RUN_LINE = /^@@RUN\s+(.+?)\s*$/;
 const DONE_LINE = /^@@DONE\s*$/;
 
 /**
  * Incremental, line-based parser. Feed it streamed chunks; it returns the
  * protocol events that have fully closed so far. Call flush() at the end for
- * any trailing narration or an unterminated file block (we still write those —
- * a model that runs out of tokens mid-file shouldn't lose the file).
+ * any trailing narration. Unterminated file blocks are discarded: replacing a
+ * repository file with token-truncated output is never a safe recovery mode.
  */
 export class StreamParser {
   private buf = "";
@@ -114,6 +119,8 @@ export class StreamParser {
       this.inFile = true;
       this.filePath = cleanPath(m[1]);
       this.fileLines = [];
+    } else if ((m = line.match(READ_LINE))) {
+      out.push({ t: "read", path: cleanPath(m[1]) });
     } else if ((m = line.match(RUN_LINE))) {
       out.push({ t: "run", cmd: m[1].trim() });
     } else if (DONE_LINE.test(line)) {
@@ -131,14 +138,14 @@ export class StreamParser {
 
   flush(): ParseEvent[] {
     const out: ParseEvent[] = [];
-    // a file that never got its @@END (model hit the token ceiling) is still
-    // worth keeping if it has real content
-    if (this.inFile && this.fileLines.join("").trim()) {
-      out.push({ t: "file", path: this.filePath, content: stripFence(this.fileLines).join("\n") });
-    }
+    // No @@END means no file event. The caller may retry with more tokens, but
+    // must never write a partial replacement to disk.
+    const abandonedFile = this.inFile;
     this.inFile = false;
+    this.filePath = "";
+    this.fileLines = [];
     // whatever's left in buf is a final partial line of narration
-    if (this.buf.trim() && !this.inFile) this.narration.push(this.buf);
+    if (this.buf.trim() && !abandonedFile) this.narration.push(this.buf);
     this.buf = "";
     return out;
   }

@@ -3,19 +3,21 @@
   "productName": "Veylaro Code",
   "private": true,
   "version": "1.0.0",
-  "description": "Veylaro Code \u2014 a local AI coding environment with Laro Lite, Med and Max.",
+  "description": "Veylaro Code — a local AI coding environment with Laro Lite, Med and Max.",
   "author": "Veylaro Labs",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "test": "tsx --test tests/**/*.test.ts && node --test tests/*.test.cjs",
     "preview": "vite preview",
     "app": "electron .",
-    "dist": "vite build && electron-builder --mac --publish never",
-    "dist:mac": "vite build && electron-builder --mac zip --publish never",
-    "dist:win": "vite build && electron-builder --win --publish never",
-    "dist:all": "vite build && electron-builder --mac zip --win --publish never",
+    "dist": "node build/releasePreflight.cjs && vite build && electron-builder --mac --publish never",
+    "dist:mac": "node build/releasePreflight.cjs && vite build && electron-builder --mac zip --publish never",
+    "dist:local": "VEYLARO_LOCAL_ADHOC=1 vite build && electron-builder --mac zip --publish never",
+    "dist:win": "node build/releasePreflight.cjs && vite build && electron-builder --win --publish never",
+    "dist:all": "node build/releasePreflight.cjs && vite build && electron-builder --mac zip --win --publish never",
     "cli": "node cli/veylaro.cjs"
   },
   "dependencies": {
@@ -26,8 +28,9 @@
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "electron": "^31.3.0",
+    "electron": "^43.2.0",
     "electron-builder": "^24.13.3",
+    "tsx": "^4.23.1",
     "typescript": "^5.5.4",
     "vite": "^5.4.8"
   },
@@ -37,7 +40,8 @@
     "artifactName": "VeylaroCode-${version}-${arch}-${os}.${ext}",
     "files": [
       "dist/**",
-      "electron/**",
+    "electron/**",
+    "build/releaseBundle.cjs",
       "package.json"
     ],
     "extraResources": [
@@ -53,7 +57,11 @@
     "afterPack": "build/afterPack.cjs",
     "mac": {
       "category": "public.app-category.developer-tools",
-      "identity": null,
+      "hardenedRuntime": true,
+      "forceCodeSigning": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "notarize": true,
       "target": [
         {
           "target": "zip",

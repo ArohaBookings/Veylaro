@@ -266,14 +266,13 @@ export function UpgradeModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/* ============ Intelligence — overnight training + updates ============ */
+/* ============ Intelligence — verified local memory + updates ============ */
 
 interface UpdateFeed {
   app_version: string;
   model_version: string;
   model_name: string;
   notes: string;
-  pull_command?: string;
 }
 
 export function IntelligenceModal({ onClose }: { onClose: () => void }) {
@@ -305,13 +304,10 @@ export function IntelligenceModal({ onClose }: { onClose: () => void }) {
     if (!feed) return;
     setUpdateState("downloading");
     try {
-      if (window.veylaro?.exec && feed.pull_command) {
-        const r = await window.veylaro.exec(feed.pull_command);
-        setUpdateState(r.ok ? "done" : "error");
-      } else {
-        window.open(`${SITE_URL}/#/download`, "_blank");
-        setUpdateState("done");
-      }
+      // Never execute a command supplied by a remote update feed. Production
+      // updates must arrive as a signed, notarized artifact that the user chose.
+      window.open(`${SITE_URL}/#/download`, "_blank");
+      setUpdateState("done");
     } catch {
       setUpdateState("error");
     }
@@ -320,26 +316,25 @@ export function IntelligenceModal({ onClose }: { onClose: () => void }) {
   return (
     <Veil onClose={onClose}>
       <h2><Bolt size={18} style={{ color: "var(--copper)" }} /> Intelligence</h2>
-      <p className="sub">Your Laro gets smarter two ways: our updates, and — if you opt in — its own overnight practice.</p>
+      <p className="sub">Veylaro improves through signed releases and, if you opt in, private retrieval of work that passed on your machine.</p>
 
       <div className="mrow">
         <Toggle
           on={settings.overnight}
           onChange={(v) => setSettings({ overnight: v })}
-          title="Overnight training"
-          sub="While you sleep (idle + plugged in), Laro runs a small LoRA pass on your accepted work — a personal adapter, trained on your style, stored only on this machine."
+          title="Verified local memory"
+          sub="While idle and plugged in, Veylaro consolidates only execution-verified precedents for later retrieval. This does not train or modify model weights."
         />
         <div className="fit-note" style={{ marginTop: 10 }}>
           <Clock size={15} style={{ flexShrink: 0, marginTop: 2, color: "var(--champagne)" }} />
           <span>
             {settings.overnight ? (
               <>
-                <b>Armed.</b> Trains only when the machine is idle and powered. Your personal adapter is kept{" "}
-                <b>separate from the base weights</b> — when a Veylaro update lands, the adapter is re-applied on
-                top, so updates never erase what Laro learned about you.
+                <b>Enabled.</b> Lightweight consolidation runs only when the machine is idle and powered. The records
+                stay separate from the checkpoint, can be deleted, and must be re-verified on every new task.
               </>
             ) : (
-              <>Off. Laro still improves with every Veylaro update — this switch just adds personal practice on top.</>
+              <>Off. No verified work records are retrieved on future tasks.</>
             )}
           </span>
         </div>
@@ -348,12 +343,11 @@ export function IntelligenceModal({ onClose }: { onClose: () => void }) {
       <div className="mrow">
         <label>Your personal Laro</label>
         <div className="update-box">
-          <div className="urow"><span>Base weights</span><b>{liveModel ? liveModel.replace(/:latest$/, "") : "arrives with launch"}</b></div>
-          <div className="urow"><span>Your adapter</span><b>{settings.overnight ? "training nightly ✦" : "not started"}</b></div>
+          <div className="urow"><span>Local checkpoint</span><b>{liveModel ? liveModel.replace(/:latest$/, "") : "not detected"}</b></div>
+          <div className="urow"><span>Verified memory</span><b>{settings.overnight ? "enabled" : "off"}</b></div>
           <div className="unote">
-            Your adapter is yours alone — it layers on top of the base weights. When we ship a smarter
-            Laro, your adapter re-applies automatically: new brain, same you-shaped instincts. Weights
-            stay closed and on this machine.
+            Memory records remain local and separate from the checkpoint. This feature does not run LoRA,
+            rewrite weights, or turn an unverified answer into learned knowledge.
           </div>
         </div>
       </div>

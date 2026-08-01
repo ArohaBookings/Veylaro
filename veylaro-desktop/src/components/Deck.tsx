@@ -3,6 +3,15 @@ import { useStore } from "../state/store";
 import { BrowseStep } from "../types";
 import { UI_AUDIT_JS, formatCritique, highIssues, UiReport } from "../engine/uiCritique";
 import { pickVisionModel, VISION_CRITIQUE_PROMPT, parseVerdict, verdictToCritique } from "../engine/visionJudge";
+import {
+  FunctionalReport,
+  INJECT_ERRORS_JS,
+  PROBE_JS,
+  functionalCritique,
+  functionalIssues,
+  isBroken,
+  truthCappedVisualScore,
+} from "../engine/functionalGate";
 
 /* Side chat — talk to Laro's featherweight side while the heavy work runs */
 function SideChat() {
@@ -152,19 +161,48 @@ function Viewport() {
   // proved took a page from 0/100 to 100/100.
   const vpRef = useRef<any>(null);
   const [taste, setTaste] = useState<UiReport | null>(null);
+  const [functional, setFunctional] = useState<FunctionalReport | null>(null);
+  const consoleErrors = useRef<string[]>([]);
   useEffect(() => {
     const wv = vpRef.current;
-    if (!wv || !isDesktop || !auditable) { setTaste(null); return; }
+    if (!wv || !isDesktop || !auditable) { setTaste(null); setFunctional(null); return; }
     let alive = true;
-    const audit = () => {
+    const audit = async () => {
       try {
-        wv.executeJavaScript(UI_AUDIT_JS, false).then((r: UiReport) => { if (alive && r) setTaste(r); }).catch(() => {});
+        await wv.executeJavaScript(INJECT_ERRORS_JS, false).catch(() => {});
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const [visual, reality] = await Promise.all([
+          wv.executeJavaScript(UI_AUDIT_JS, false),
+          wv.executeJavaScript(PROBE_JS, false),
+        ]);
+        if (!alive) return;
+        if (visual) setTaste(visual as UiReport);
+        if (reality) {
+          const report = reality as FunctionalReport;
+          report.jsErrors = [...new Set([...(report.jsErrors || []), ...consoleErrors.current])].slice(0, 6);
+          setFunctional(report);
+        }
       } catch { /* webview not ready */ }
     };
-    const onReady = () => setTimeout(audit, 400);
+    const onStart = () => { consoleErrors.current = []; setFunctional(null); };
+    const onConsole = (event: any) => {
+      const level = Number(event?.level ?? 0);
+      if (level >= 3 && event?.message) consoleErrors.current = [...consoleErrors.current, String(event.message).slice(0, 160)].slice(-6);
+    };
+    const onReady = () => setTimeout(() => void audit(), 500);
+    wv.addEventListener("did-start-loading", onStart);
+    wv.addEventListener("console-message", onConsole);
     wv.addEventListener("dom-ready", onReady);
     wv.addEventListener("did-navigate-in-page", onReady);
-    return () => { alive = false; try { wv.removeEventListener("dom-ready", onReady); wv.removeEventListener("did-navigate-in-page", onReady); } catch { /* gone */ } };
+    return () => {
+      alive = false;
+      try {
+        wv.removeEventListener("did-start-loading", onStart);
+        wv.removeEventListener("console-message", onConsole);
+        wv.removeEventListener("dom-ready", onReady);
+        wv.removeEventListener("did-navigate-in-page", onReady);
+      } catch { /* gone */ }
+    };
   }, [settings.viewportUrl, reloadKey, isDesktop, auditable]);
 
   const polish = async () => {
@@ -174,16 +212,28 @@ function Viewport() {
     // and get a brutal designer's verdict too — the objective audit catches the
     // measurable faults, the vision model catches composition/taste.
     try {
-      const tags = await fetch(`${settings.engineUrl.replace(/\/$/, "")}/api/tags`).then((r) => r.json());
-      const vm = pickVisionModel((tags?.models || []).map((m: any) => String(m?.name || "")));
+      const listing = await fetch(`${settings.engineUrl.replace(/\/$/, "")}/v1/models`).then((r) => r.json());
+      const vm = pickVisionModel((listing?.data || []).map((m: any) => String(m?.id || "")));
       if (vm && vpRef.current?.capturePage) {
         const img = await vpRef.current.capturePage();
-        const b64 = img.toDataURL().split(",")[1];
-        const resp = await fetch(`${settings.engineUrl.replace(/\/$/, "")}/api/chat`, {
+        const dataUrl = img.toDataURL();
+        const resp = await fetch(`${settings.engineUrl.replace(/\/$/, "")}/v1/chat/completions`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: vm, stream: false, messages: [{ role: "user", content: VISION_CRITIQUE_PROMPT, images: [b64] }], options: { num_predict: 260, temperature: 0.2 } }),
+          body: JSON.stringify({
+            model: vm,
+            stream: false,
+            max_tokens: 260,
+            temperature: 0.2,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "text", text: VISION_CRITIQUE_PROMPT },
+                { type: "image_url", image_url: { url: dataUrl } },
+              ],
+            }],
+          }),
         }).then((r) => r.json());
-        const vc = verdictToCritique(parseVerdict(resp?.message?.content || ""));
+        const vc = verdictToCritique(parseVerdict(resp?.choices?.[0]?.message?.content || ""));
         if (vc) critique += "\n\n" + vc;
       }
     } catch { /* no vision model / capture unavailable — objective audit still applies */ }
@@ -199,6 +249,13 @@ function Viewport() {
     setReloadKey((k) => k + 1);
   };
 
+  const functionalBroken = !!functional && isBroken(functional);
+  const displayedTaste = taste ? truthCappedVisualScore(taste.score, functional) : null;
+  const reviewTitle = [
+    taste?.issues.length ? "Visual review:\n" + taste.issues.map((i) => `• ${i.msg}`).join("\n") : "Visual checks found no measured issue.",
+    functional ? (functionalIssues(functional).length ? "Runtime review:\n" + functionalIssues(functional).map((i) => `• ${i}`).join("\n") : `Runtime probe passed ${functional.testedButtons} safely testable control(s); ${functional.skippedButtons} unclassified or high-impact control(s) were not clicked.`) : "Runtime probe has not completed.",
+  ].join("\n\n");
+
   return (
     <div className="vp">
       <div className="vp-bar">
@@ -213,14 +270,20 @@ function Viewport() {
         <button className="icon-btn" style={{ width: 28, height: 28 }} title="Go / reload" onClick={go}>
           ⟳
         </button>
-        {taste && auditable && (
+        {taste && auditable && displayedTaste !== null && (
           <span
-            className={`vp-taste ${highIssues(taste) ? "bad" : "good"}`}
-            title={taste.issues.length ? "UI taste check:\n" + taste.issues.map((i) => `• ${i.msg}`).join("\n") : "Clean — no contrast, overflow or font issues found."}
+            className={`vp-taste ${highIssues(taste) || functionalBroken ? "bad" : "good"}`}
+            title={reviewTitle}
           >
-            ✦ {taste.score}
-            {highIssues(taste) > 0 && !running && (
-              <button className="vp-polish" onClick={polish} title="Send these issues to Laro to fix">Polish</button>
+            ✦ {displayedTaste}
+            {(functionalBroken || highIssues(taste) > 0) && !running && (
+              <button
+                className="vp-polish"
+                onClick={() => functionalBroken && functional ? store.send(functionalCritique(functional), []) : polish()}
+                title={functionalBroken ? "Send the measured runtime failures to Laro" : "Send the measured visual issues to Laro"}
+              >
+                Fix
+              </button>
             )}
           </span>
         )}

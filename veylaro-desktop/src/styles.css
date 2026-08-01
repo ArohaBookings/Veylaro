@@ -1090,6 +1090,11 @@ a { color: var(--copper); text-decoration: none; }
 .tc-fit { font-size: 11.5px; margin-top: 3px; }
 .tc-fit.great { color: var(--green); } .tc-fit.ok { color: var(--champagne); }
 .tc-fit.tight { color: var(--amber); } .tc-fit.insufficient { color: var(--red); }
+.model-downloads { display: flex; flex-direction: column; gap: 8px; }
+.model-download-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 52px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.model-download-row > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.model-download-row b { color: var(--text); font-size: 13px; }
+.model-download-row span { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; }
 
 /* account page */
 .acct-big { display: flex; align-items: center; gap: 14px; }

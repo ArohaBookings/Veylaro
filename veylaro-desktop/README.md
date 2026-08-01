@@ -1,31 +1,32 @@
 # Veylaro Desktop
 
-The downloadable Veylaro app — a local AI coding agent UI for **Laro Lite** and **Laro Max**.
+The Veylaro local coding-agent app for **Laro Lite**, **Laro Med**, and **Laro Max**.
 Warm-charcoal + copper design system, matching the marketing site (`../axon-code-site`).
 
 ## Run it
 
 ```bash
 npm install
-npm run dev        # browser preview at http://localhost:5176
+npm run dev        # browser preview (Vite prints the selected local port)
 npm run app        # Electron window (uses dist/ — run `npm run build` first, or set VITE_DEV_SERVER_URL)
-npm run dist       # package → release/Veylaro-1.0.0-arm64-mac.zip
+npm run dist       # production package; fails closed until signed artifacts exist
 ```
 
-The packaged zip is copied to `../axon-code-site/public/downloads/` and linked from the
-site's Download page (SHA-256 in `SHA256SUMS.txt` next to it).
+Production packaging requires a self-contained MLX runtime, a strict release
+manifest, hash-pinned model bundles, signing, and notarization. The preflight
+intentionally blocks metadata-only and developer-machine builds.
 
 ## What's inside
 
-- **Model slider** — Laro Lite ⟷ Laro Max with spring thumb, spark burst and a
-  "swapping weights" toast. Hardware fit check (reads real RAM via Electron, `deviceMemory` in browser)
-  recommends the right model.
+- **Verified model manager** — shows Lite/Med/Max separately and permits a tier
+  only when its exact checkpoint is installed and integrity-matched. Downloads
+  stream to disk and are accepted only after pinned size and SHA-256 checks.
 - **Sessions with scope lock** — every session is pinned to one file/folder; the agent only
   edits inside it. Native file pickers in Electron, graceful fallbacks in browser.
 - **Permission modes** — Ask everything / Accept edits / **Bypass (full auto, never stops)**.
-- **Free-tier gating** — 120 agent messages/week with animated ring meter; composer locks at 0
+- **Free-tier gating** — 50 agent messages/week; composer locks at 0
   with an upgrade banner. Pro/Team license keys (`VEY-PRO-…`, `VEY-TEAM-…`) unlock unlimited (∞).
-- **Sign-in** — syncs the plan from a veylaro.ai account (simulated until the backend exists).
+- **Sign-in UI** — account and billing integration is not production-complete yet.
 - **Dual-language narration** — every agent step has a plain-English line *and* a dev line;
   Both/Plain/Dev toggle in the header. Dev terms get hover glossary tooltips.
 - **Personality** — Laro thinks out loud ("silly me — wrong import path, fixing…"), toggleable.
@@ -45,12 +46,11 @@ site's Download page (SHA-256 in `SHA256SUMS.txt` next to it).
 
 ## Engine
 
-`src/engine/demo.ts` is the **preview brain** — a scripted agent that exercises the entire UX.
-`src/engine/ollama.ts` is the **live adapter**: when the real Laro weights are served
-(Ollama / OpenAI-compatible on localhost), flip **Settings → Engine → Live Laro weights** and
-point it at the endpoint + model name. Chat then streams from the real model
-(`LARO_SYSTEM_PROMPT` in the same file). The agentic tool-loop swaps in behind the same
-event types (`src/types.ts` → `AgentEvent`), so the UI needs zero changes.
+`src/engine/demo.ts` is the browser-only preview brain. Production inference uses
+the bundled MLX runtime through an OpenAI-compatible localhost API. The desktop
+process starts only an integrity-verified tier artifact and has no Ollama
+protocol fallback. The guarded event loop handles repository reads, edits,
+commands, tests, rollback, and evidence reporting.
 
 ## State
 

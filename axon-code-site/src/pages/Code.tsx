@@ -82,7 +82,7 @@ export function Code() {
               { c: "b-3", icon: <Bolt />, t: "Sub-agents", b: "On capable machines Laro splits into Scout, Builder and Verifier lanes that work the problem in parallel. Auto-scales to your RAM." },
               { c: "b-2", icon: <Shield />, t: "Privacy HUD", b: "Live proof: 0 bytes to the cloud, tokens per second, RAM, and a running counter of what you've saved versus metered cloud agents." },
               { c: "b-2", icon: <Memory />, t: "Private verified learning", b: "Opt in and Veylaro stores observed passing checks as local precedents. It retrieves relevant lessons later without pretending that review alone rewrote weights." },
-              { c: "b-2", icon: <GitBranch />, t: "Internet when you want it", b: "A globe toggle grants live web search — only the query leaves the machine, never your code. Offline, everything still works." },
+              { c: "b-2", icon: <GitBranch />, t: "Internet when you want it", b: "A globe toggle grants live web search. The displayed query goes to the provider; project files are not attached. Offline, local work still runs." },
             ].map((f, i) => (
               <Reveal key={f.t} delay={(i % 3) * 100} className={f.c}>
                 <GlowCard style={{ height: "100%" }}>
@@ -159,7 +159,7 @@ export function Code() {
                 </div>
               )}
               <div className="hero-sub" style={{ justifyContent: "center", marginTop: 22 }}>
-                <span>Free tier included</span><span>·</span><span>Laro Lite runs on 4 GB RAM</span><span>·</span><span>100% local</span>
+                <span>Free tier included</span><span>·</span><span>Laro Lite requires 8 GB RAM</span><span>·</span><span>Local inference</span>
               </div>
             </div>
           </Reveal>

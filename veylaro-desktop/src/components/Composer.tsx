@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore, uid } from "../state/store";
-import { Attachment, PermMode } from "../types";
+import { Attachment, ModelCatalogItem, PermMode } from "../types";
 import { Globe, ImageIc, Lock, Map, Mic, Send } from "./icons";
 import { MODELS, ModelId } from "../types";
 import { fitCheck } from "../engine/tiers";
+import { tierFromModelName } from "../engine/runtime";
 
 /** Claude-Code-style model picker living in the composer bar. */
 function ModelMenu() {
-  const { settings, setSettings, ramGB } = useStore();
+  const { settings, setSettings, ramGB, liveModel } = useStore();
+  const liveTier = tierFromModelName(liveModel || "");
+  const [catalog, setCatalog] = useState<ModelCatalogItem[] | null>(null);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -22,6 +25,13 @@ function ModelMenu() {
       document.removeEventListener("keydown", esc);
     };
   }, []);
+  useEffect(() => {
+    let active = true;
+    window.veylaro?.modelCatalog?.().then((result) => {
+      if (active) setCatalog(result.models);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
   return (
     <div className="mmenu" ref={ref}>
       {open && (
@@ -29,13 +39,15 @@ function ModelMenu() {
           <div className="mmenu-h">Models</div>
           {(["lite", "med", "max"] as ModelId[]).map((m) => {
             const fit = fitCheck(m, ramGB);
-            const unavailable = fit.status === "insufficient";
+            const installed = liveTier === m || Boolean(catalog?.some((item) => item.tier === m && item.installed));
+            const endpointMismatch = !installed;
+            const unavailable = fit.status === "insufficient" || !installed;
             return (
               <button
                 key={m}
                 className={`mmenu-item ${settings.model === m ? "on" : ""}`}
                 disabled={unavailable}
-                title={fit.note}
+                title={endpointMismatch ? `${MODELS[m].name} is not installed.` : fit.note}
                 onClick={() => {
                   setSettings({ model: m, autoPickModel: false });
                   setOpen(false);
@@ -43,8 +55,10 @@ function ModelMenu() {
               >
                 <span className="mm-name">{MODELS[m].name}</span>
                 <span className="mm-desc">
-                  {unavailable
-                    ? `needs ${MODELS[m].ram}`
+                  {endpointMismatch
+                    ? "checkpoint not available here"
+                    : fit.status === "insufficient"
+                      ? `needs ${MODELS[m].ram}`
                     : m === "lite"
                       ? "fast · light machines"
                       : m === "med"
@@ -275,7 +289,7 @@ export function Composer({
               !online
                 ? "No internet right now — Laro keeps working fully offline"
                 : settings.internet
-                  ? "Internet ON — Laro can search the live web (your code never goes with it)"
+                  ? "Internet ON — the displayed query can go to the search provider; project files are not attached"
                   : "Internet OFF — pure offline mode"
             }
             onClick={() => online && setSettings({ internet: !settings.internet })}
