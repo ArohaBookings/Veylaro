@@ -34,7 +34,10 @@ export const PROBE_JS = `(() => {
   r.bodyLen = (document.body.innerText||'').trim().length;
   r.jsErrors = (window.__vErrors||[]).slice(0,6);
   r.inputs = document.querySelectorAll('input,textarea,select').length;
-  r.usesStorage = /localStorage|sessionStorage/.test(document.documentElement.innerHTML);
+  // storage detection: inline HTML + every linked/inline <script> (external app.js
+  // was being missed), OR the fact that something is actually in storage.
+  const scriptText = [...document.scripts].map(s => s.textContent || '').join('\\n') + document.documentElement.innerHTML;
+  const mentionsStorage = /localStorage|sessionStorage/.test(scriptText);
   const btns = [...document.querySelectorAll('button,[role=button],input[type=submit]')].filter(b => b.offsetWidth>0 && b.offsetHeight>0 && !b.disabled).slice(0,14);
   r.buttons = btns.length;
   for (const b of btns) {
@@ -45,6 +48,8 @@ export const PROBE_JS = `(() => {
     try { b.click(); } catch(e) { r.jsErrors.push('click "'+label+'": '+String(e).slice(0,80)); }
     if (document.body.innerHTML === before) r.deadButtons.push(label);
   }
+  // set AFTER interacting — an app that wrote to storage during the probe clearly uses it
+  r.usesStorage = mentionsStorage || localStorage.length > 0 || sessionStorage.length > 0;
   return r;
 })()`;
 
