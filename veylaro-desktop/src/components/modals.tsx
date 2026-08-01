@@ -425,7 +425,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                 because the only honest way to sell a local AI is to let you actually use it.
               </p>
               <p style={{ color: "var(--dim)", fontSize: 12 }}>
-                After that: 200 messages a week free forever, or go Pro for unlimited. Your call, later.
+                After that: 50 messages a week free forever, or go Pro for unlimited. Your call, later.
               </p>
             </div>
             <div className="ob-ctas">

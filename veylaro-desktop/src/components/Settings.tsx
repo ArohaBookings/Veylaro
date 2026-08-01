@@ -319,7 +319,7 @@ function AccountPage({ onSignIn, onUpgrade }: { onSignIn: () => void; onUpgrade:
 
       <div className="update-box" style={{ marginTop: 14 }}>
         <div className="urow"><span>Plan</span><b>{billingStatus.label}{billingStatus.daysLeft != null ? ` · ${billingStatus.daysLeft} days left` : ""}</b></div>
-        <div className="urow"><span>This week</span><b>{billingStatus.plan === "free" ? `${usage.used} of 200 messages` : "Unlimited"}</b></div>
+        <div className="urow"><span>This week</span><b>{billingStatus.plan === "free" ? `${usage.used} of 50 messages` : "Unlimited"}</b></div>
         <div className="unote">
           Billing is handled on the website so your card details never touch this app. Changes show up
           here within a minute of checkout.

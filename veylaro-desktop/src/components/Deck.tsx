@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { BrowseStep } from "../types";
 import { UI_AUDIT_JS, formatCritique, highIssues, UiReport } from "../engine/uiCritique";
+import { pickVisionModel, VISION_CRITIQUE_PROMPT, parseVerdict, verdictToCritique } from "../engine/visionJudge";
 
 /* Side chat — talk to Laro's featherweight side while the heavy work runs */
 function SideChat() {
@@ -166,10 +167,27 @@ function Viewport() {
     return () => { alive = false; try { wv.removeEventListener("dom-ready", onReady); wv.removeEventListener("did-navigate-in-page", onReady); } catch { /* gone */ } };
   }, [settings.viewportUrl, reloadKey, isDesktop, auditable]);
 
-  const polish = () => {
+  const polish = async () => {
     if (!taste) return;
-    const critique = formatCritique(taste);
-    store.send(`Polish the UI you just built — a quick objective audit found issues. ${critique}`, []);
+    let critique = formatCritique(taste);
+    // Auto vision judge: if a multimodal model is installed, screenshot the render
+    // and get a brutal designer's verdict too — the objective audit catches the
+    // measurable faults, the vision model catches composition/taste.
+    try {
+      const tags = await fetch(`${settings.engineUrl.replace(/\/$/, "")}/api/tags`).then((r) => r.json());
+      const vm = pickVisionModel((tags?.models || []).map((m: any) => String(m?.name || "")));
+      if (vm && vpRef.current?.capturePage) {
+        const img = await vpRef.current.capturePage();
+        const b64 = img.toDataURL().split(",")[1];
+        const resp = await fetch(`${settings.engineUrl.replace(/\/$/, "")}/api/chat`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: vm, stream: false, messages: [{ role: "user", content: VISION_CRITIQUE_PROMPT, images: [b64] }], options: { num_predict: 260, temperature: 0.2 } }),
+        }).then((r) => r.json());
+        const vc = verdictToCritique(parseVerdict(resp?.message?.content || ""));
+        if (vc) critique += "\n\n" + vc;
+      }
+    } catch { /* no vision model / capture unavailable — objective audit still applies */ }
+    store.send(`Polish the UI you just built — a design review found issues. ${critique}`, []);
   };
 
   const go = () => {

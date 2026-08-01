@@ -27,7 +27,7 @@ const PLANS: Plan[] = [
     features: [
       { t: "Laro Lite — full local weights" },
       { t: "First 30 days unlimited at launch" },
-      { t: "200 agent messages per week — resets every Monday" },
+      { t: "50 agent messages per week — resets every Monday" },
       { t: "Chat, file & image understanding" },
       { t: "Single-project memory" },
       { t: "Community support" },

@@ -213,10 +213,11 @@ export interface Usage {
   used: number;
 }
 
-/** Free tier: enough to genuinely build ~two solid websites, every single
-    week (a full agent-built site runs ~60–90 messages incl. iterations).
-    Resets every Monday (ISO week). Enforced locally, so it works offline. */
-export const FREE_WEEKLY_LIMIT = 200;
+/** Free tier: 50 agent messages a week — enough to genuinely try it and build a
+    real page or two. The first month is unlimited (the launch gift); after that
+    it's 50/week free, or Pro for uncapped. Resets Monday (ISO week), enforced
+    locally so it works offline. */
+export const FREE_WEEKLY_LIMIT = 50;
 
 export const MODELS: Record<
   ModelId,

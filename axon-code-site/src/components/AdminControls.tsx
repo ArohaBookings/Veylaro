@@ -182,7 +182,7 @@ export function AdminControls() {
       <GlowCard className="panel" style={{ marginTop: 16 }}>
         <h4>Usage & limits</h4>
         <Row title="Reset everyone's weekly free limit"
-          sub="Gives every free user a fresh 200 messages straight away. Useful after an outage or a big launch push.">
+          sub="Gives every free user a fresh 50 messages straight away. Useful after an outage or a big launch push.">
           <button className="btn ghost" disabled={busy !== null || state === "missing"} onClick={resetWeekly}>
             {busy === "reset" ? "Resetting…" : "Reset now"}
           </button>

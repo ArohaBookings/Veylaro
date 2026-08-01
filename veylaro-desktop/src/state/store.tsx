@@ -34,7 +34,7 @@ export function deriveBilling(account: Account | null, now: number, online: bool
       label: "Launch month",
       daysLeft,
       banner: daysLeft <= 7
-        ? { tone: "info", title: `Your free launch month ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`, body: "After that you drop to the free tier — 200 messages a week, still unlimited privacy. Go Pro any time to keep it uncapped.", cta: "resubscribe" }
+        ? { tone: "info", title: `Your free launch month ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`, body: "After that you drop to the free tier — 50 messages a week, still unlimited privacy. Go Pro any time to keep it uncapped.", cta: "resubscribe" }
         : null,
     };
   }

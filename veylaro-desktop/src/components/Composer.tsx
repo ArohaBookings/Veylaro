@@ -217,7 +217,7 @@ export function Composer({
         <div className="lock-banner">
           <Lock size={22} style={{ color: "var(--copper)", flexShrink: 0 }} />
           <div className="lt">
-            <b>You've used all 200 free messages this week — resets Monday.</b>
+            <b>You've used all 50 free messages this week — resets Monday.</b>
             <p>The model is still on your machine — the free tier just caps the agent. Pro removes every limit: run it all night for one flat price.</p>
           </div>
           <button className="btn primary" onClick={onUpgrade}>Unlock unlimited</button>
