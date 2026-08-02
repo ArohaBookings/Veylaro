@@ -49,6 +49,10 @@
       {
         "from": "cli",
         "to": "cli"
+      },
+      {
+        "from": "runtime-release",
+        "to": "runtime-release"
       }
     ],
     "directories": {

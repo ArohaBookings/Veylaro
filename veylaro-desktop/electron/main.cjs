@@ -14,6 +14,7 @@ const {
 } = require("./engineRuntime.cjs");
 const { installModelBundle } = require("./modelInstaller.cjs");
 const { resolveModelCatalog, resolveReleaseModel } = require("./modelManager.cjs");
+const { GGUF_MODELS, installGgufModel, ggufCatalog } = require("./ggufCatalog.cjs");
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL || null;
 
@@ -578,13 +579,14 @@ ipcMain.handle("veylaro:engineStop", () => stopOwnedEngine());
 ipcMain.handle("veylaro:memoryState", () => readMemoryState());
 ipcMain.handle("veylaro:modelCatalog", () => {
   try {
-    return resolveModelCatalog({
-      packaged: app.isPackaged,
-      resourcesPath: process.resourcesPath,
-      userDataPath: app.getPath("userData"),
-      platform: process.platform,
-      arch: process.arch,
-    });
+    // Self-contained GGUF catalog is the shipped model system: the app bundles
+    // the llama.cpp engine and downloads verified GGUF weights on first run.
+    return {
+      ok: true,
+      productionReady: true,
+      releaseId: "gguf-1",
+      models: ggufCatalog(app.getPath("userData")),
+    };
   } catch (error) {
     return { ok: false, productionReady: false, releaseId: null, models: [], error: String(error?.message || error) };
   }
@@ -597,7 +599,16 @@ ipcMain.handle("veylaro:modelInstall", async (event, tier) => {
   }
   const controller = new AbortController();
   modelDownloads.set(tier, controller);
+  const onProgress = (progress) => {
+    if (!event.sender.isDestroyed()) event.sender.send("veylaro:modelProgress", { tier, ...progress });
+  };
   try {
+    // Self-contained GGUF path (shipped): verified download into
+    // userData/models/<tier>/model.gguf, where the llama.cpp engine finds it.
+    if (GGUF_MODELS[tier]) {
+      return await installGgufModel({ tier, userDataPath: app.getPath("userData"), signal: controller.signal, onProgress });
+    }
+    // Legacy MLX safetensors path (kept for any tier still served that way).
     const release = resolveReleaseModel({
       packaged: app.isPackaged,
       resourcesPath: process.resourcesPath,
@@ -609,9 +620,7 @@ ipcMain.handle("veylaro:modelInstall", async (event, tier) => {
       releaseEntry: release.entry,
       userDataPath: app.getPath("userData"),
       signal: controller.signal,
-      onProgress: (progress) => {
-        if (!event.sender.isDestroyed()) event.sender.send("veylaro:modelProgress", { tier, ...progress });
-      },
+      onProgress,
     });
     return { ...result, releaseId: release.releaseId };
   } catch (error) {
