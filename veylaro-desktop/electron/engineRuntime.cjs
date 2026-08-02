@@ -181,6 +181,72 @@ function packagedLaunchSpec(raw, options, tier) {
   }
 }
 
+const GGUF_MAGIC = Buffer.from("GGUF");
+/** A GGUF weight file that is present and plausibly complete (correct magic,
+    not a truncated download). */
+function ggufLooksComplete(file, minimumBytes = 50 * 1024 * 1024) {
+  try {
+    const st = fs.statSync(file);
+    if (!st.isFile() || st.size < minimumBytes) return false;
+    const fd = fs.openSync(file, "r");
+    const head = Buffer.alloc(4);
+    fs.readSync(fd, head, 0, 4, 0);
+    fs.closeSync(fd);
+    return head.equals(GGUF_MAGIC);
+  } catch {
+    return false;
+  }
+}
+
+/** SELF-CONTAINED ENGINE (llama.cpp). A single relocatable binary + a GGUF —
+    no Python, no MLX, no ollama. Packaged: the binary is bundled in
+    runtime-release/<platform>-<arch>/ and the GGUF is installed under
+    userData/models/<tier>/model.gguf. Dev: point VEYLARO_LLAMACPP_SERVER at a
+    built llama-server and VEYLARO_<TIER>_GGUF at a local GGUF. Returns null when
+    the pieces aren't present, so callers fall back to the mlx path. */
+function llamacppLaunchSpec(raw, options = {}) {
+  const parsed = new URL(engineBase(raw));
+  if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") return null;
+  const env = options.env || process.env;
+  const tier = modelTierConfig(options.sku);
+
+  let server = "";
+  let gguf = "";
+  let cwd = process.cwd();
+  if (options.packaged && options.resourcesPath && options.userDataPath) {
+    const engineDir = path.join(options.resourcesPath, "runtime-release", `${options.platform || process.platform}-${options.arch || process.arch}`);
+    server = path.join(engineDir, process.platform === "win32" ? "llama-server.exe" : "llama-server");
+    gguf = path.join(options.userDataPath, "models", tier.id, "model.gguf");
+    cwd = engineDir;
+  } else {
+    server = String(env.VEYLARO_LLAMACPP_SERVER || "").trim();
+    gguf = String(env[`VEYLARO_${tier.id.toUpperCase()}_GGUF`] || env.VEYLARO_GGUF || "").trim();
+    cwd = server ? path.dirname(server) : process.cwd();
+  }
+  if (!server || !fs.existsSync(server)) return null;
+  if (!gguf || !ggufLooksComplete(gguf)) return null;
+
+  const ctx = tier.id === "max" ? "32768" : tier.id === "med" ? "16384" : "8192";
+  const args = [
+    "-m", gguf,
+    "--host", "127.0.0.1",
+    "--port", parsed.port || "8080",
+    "-c", ctx,
+    "-ngl", "99",       // offload all layers to Metal/GPU when available
+    "--no-webui",
+    "--jinja",           // use the model's own chat template
+  ];
+  return {
+    command: server,
+    args,
+    cwd,
+    model: gguf,
+    tier: tier.id,
+    minimumRamGB: tier.minimumRamGB,
+    engine: "llamacpp",
+  };
+}
+
 function mlxLaunchSpec(raw, options = {}) {
   const base = engineBase(raw);
   const parsed = new URL(base);
@@ -243,8 +309,10 @@ module.exports = {
   GEMMA4_MED_ID,
   MODEL_TIERS,
   engineBase,
+  ggufLooksComplete,
   hasCachedSnapshot,
   installedBundleLooksValid,
+  llamacppLaunchSpec,
   mlxLaunchSpec,
   modelPreference,
   modelTierConfig,

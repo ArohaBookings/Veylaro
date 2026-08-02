@@ -6,6 +6,7 @@ const { exec, execFile, spawn } = require("child_process");
 const guard = require("./guard.cjs");
 const {
   engineBase,
+  llamacppLaunchSpec,
   mlxLaunchSpec,
   modelTierConfig,
   selectEngineModel,
@@ -124,18 +125,22 @@ async function ensureEngine(raw, preferredModel = "", sku = "lite") {
     return { ok: false, url: engineBase(raw), error: `Model start paused to protect this Mac (${memory.pressureFreePct.toFixed(0)}% memory pressure headroom). Close heavy apps and try again.` };
   }
 
-  const spec = mlxLaunchSpec(raw, {
+  // Prefer the self-contained llama.cpp engine (single binary + GGUF, no Python).
+  // Fall back to the MLX runtime when a llama.cpp engine/GGUF isn't present, so
+  // dev machines that still run MLX keep working unchanged.
+  const launchOpts = {
     preferredModel,
     sku: requested.id,
     packaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
     userDataPath: app.getPath("userData"),
-  });
+  };
+  const spec = llamacppLaunchSpec(raw, launchOpts) || mlxLaunchSpec(raw, launchOpts);
   if (!spec) {
     return {
       ok: false,
       url: engineBase(raw),
-      error: `No complete local Laro ${requested.id} MLX runtime and weight bundle was found.`,
+      error: `No complete local Laro ${requested.id} engine and weight bundle was found.`,
     };
   }
 
