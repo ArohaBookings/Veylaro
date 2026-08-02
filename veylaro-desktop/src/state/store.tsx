@@ -93,7 +93,7 @@ import { GROUNDING_NOTE, LARO_SIDE_CHARTER, SOVEREIGN_FORGE_PROMPT, laroContext 
 import { evidenceBudget, EXECUTION_LATTICE_PROMPT } from "../engine/executionLattice";
 import { cleanAssistantText, collapseReason } from "../engine/outputHygiene";
 import { extractRepairFiles } from "../engine/repairCandidates";
-import { liteReinforced, canSyntaxCheck, checkInProcess } from "../engine/liteBoost";
+import { liteReinforced, canSyntaxCheck, checkInProcess, wroteCodeButNoFile, protocolRepairBrief } from "../engine/liteBoost";
 import { synthesizeSemanticRepairs } from "../engine/semanticRepair";
 import { explicitlyRequestsTestEdits, isProtectedTestPath } from "../engine/testIntegrity";
 import { classifyModelCommand } from "../engine/commandPolicy";
@@ -1554,6 +1554,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               // models do), nudge it HARD to start writing files instead of stopping.
               // Only give up if a second nudge still produces nothing (real Q&A).
               if (wroteThisStep === 0 && ranThisStep === 0) {
+                // Lite protocol enforcer: the small model wrote code but never put
+                // it in a file, so nothing saved. Force the exact @@FILE shape with
+                // a surgical brief rather than stalling. Once, for the Lite tier.
+                if (liteReinforced(requestedSku) && !nudgedToBuild && step < maxSteps && wroteCodeButNoFile(raw, wroteThisStep)) {
+                  nudgedToBuild = true;
+                  stepLine("you wrote code but didn't save it — forcing the file protocol");
+                  convo.push({ role: "user", content: protocolRepairBrief() });
+                  continue;
+                }
                 if (nudgedToBuild || !looksLikeBuild(text) || step >= maxSteps) break;
                 nudgedToBuild = true;
                 stepLine("starting to write the files now");

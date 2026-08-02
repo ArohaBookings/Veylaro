@@ -152,6 +152,28 @@ export function pickBest(cands: Candidate[]): number {
   return best;
 }
 
+/** PROTOCOL ENFORCER (Lite tier). Small models — Qwen-Coder-3B included — often
+    narrate a solution and paste code in prose but never emit a real @@FILE block,
+    so the turn saves nothing and the run stalls. Detect that exact failure (code
+    present, zero files written, salvage found nothing) so the loop can force the
+    protocol on the next turn instead of giving up. */
+const CODE_SHAPE = /```[\s\S]*?```|\bfunction\b|\bclass\b|=>|\bexport\b|\bimport\b|\bconst\b|\bdef\b|<\/?[a-z][^>]*>/i;
+export function wroteCodeButNoFile(rawTurn: string, filesThisTurn: number): boolean {
+  if (filesThisTurn > 0) return false;
+  return CODE_SHAPE.test(rawTurn);
+}
+
+export function protocolRepairBrief(): string {
+  return [
+    "You wrote code but never placed it in a file, so nothing was saved.",
+    "Re-emit the COMPLETE file now using EXACTLY this shape and nothing else around it:",
+    "@@FILE relative/path.ext",
+    "<the entire file contents>",
+    "@@END",
+    "No prose, no markdown fences, no diff, no ellipses. One @@FILE block per file you are creating or changing.",
+  ].join("\n");
+}
+
 /** One-line, honest summary of what the reinforcement did, for the recap. */
 export function reinforcementNote(cands: Candidate[], chosen: number): string {
   if (cands.length <= 1) return "";

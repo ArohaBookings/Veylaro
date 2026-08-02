@@ -47,7 +47,7 @@ export function tierFromModelName(model: string): ModelId | undefined {
   const value = model.toLowerCase();
   if (/(?:laro|veylaro)[-_ ]?max|(?:^|[-_/ ])24b(?:$|[-_/ ])/i.test(value)) return "max";
   if (/(?:laro|veylaro)[-_ ]?med|(?:^|[-_/ ])12b(?:$|[-_/ ])/i.test(value)) return "med";
-  if (/(?:laro|veylaro)[-_ ]?lite|gemma-4-e2b|(?:^|[-_/ ])4b(?:$|[-_/ ])/i.test(value)) return "lite";
+  if (/(?:laro|veylaro)[-_ ]?lite|qwen2\.?5?[-_. ]?coder[-_. ]?3b|gemma-4-e2b|(?:^|[-_/ ])3b(?:$|[-_/ ])|(?:^|[-_/ ])4b(?:$|[-_/ ])/i.test(value)) return "lite";
   return undefined;
 }
 
@@ -99,13 +99,14 @@ export function modelPreference(sku: ModelId): string[] {
     TIER_BY_ID[sku].modelTag,
     `veylaro-${sku}`,
   ];
-  if (sku === "lite") aliases.push("mlx-community/gemma-4-e2b-it-4bit", "mlx-community/gemma-3-text-4b-it-4bit");
+  if (sku === "lite") aliases.push("Qwen2.5-Coder-3B-Instruct-Q4_K_M", "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit", "qwen2.5-coder:3b", "mlx-community/gemma-4-e2b-it-4bit");
   if (sku === "med") aliases.push("mlx-community/gemma-4-12B-it-4bit", "gemma4:12b");
   if (sku === "max") aliases.push("mlx-community/Devstral-Small-2-24B-Instruct-2512-OptiQ-4bit", "devstral:24b");
   return aliases;
 }
 const MODEL_PREFERENCE = [
   "laro-med", "laro-max", "laro-lite", "veylaro-code", "veylaro",
+  "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit", "qwen2.5-coder:3b",
   "mlx-community/gemma-4-e2b-it-4bit", "mlx-community/gemma-3-text-4b-it-4bit",
 ];
 

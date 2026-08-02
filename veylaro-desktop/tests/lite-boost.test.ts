@@ -11,6 +11,8 @@ import {
   pickBest,
   candidateScore,
   syntaxRepairBrief,
+  wroteCodeButNoFile,
+  protocolRepairBrief,
   type Candidate,
 } from "../src/engine/liteBoost";
 
@@ -75,6 +77,24 @@ test("best-of-N selects on execution evidence, never on hidden tests", () => {
   assert.equal(pickBest(cands), 2);
   // a parsing candidate always beats a non-parsing one regardless of other signal
   assert.ok(candidateScore(cands[1]) > candidateScore(cands[0]));
+});
+
+test("protocol enforcer detects 'wrote code but saved no file' and ignores clean turns", () => {
+  // code in a fence but no @@FILE block, nothing written -> must be caught
+  assert.equal(wroteCodeButNoFile("Here you go:\n```js\nfunction add(a,b){return a+b}\n```", 0), true);
+  // bare prose code, nothing written -> caught
+  assert.equal(wroteCodeButNoFile("export const x = () => 1;", 0), true);
+  // a file WAS written this turn -> not a protocol failure
+  assert.equal(wroteCodeButNoFile("```js\nfoo()\n```", 1), false);
+  // plain conversation, no code -> not a protocol failure
+  assert.equal(wroteCodeButNoFile("Sure, what should the page look like?", 0), false);
+});
+
+test("the protocol repair brief demands exactly the @@FILE shape and forbids prose/fences", () => {
+  const b = protocolRepairBrief();
+  assert.match(b, /@@FILE/);
+  assert.match(b, /@@END/);
+  assert.match(b, /No prose|no markdown fences|no diff/i);
 });
 
 test("the syntax repair brief is surgical and names the file + error", () => {
