@@ -78,7 +78,38 @@ test("accepts a genuinely complete, interactive, styled UI", () => {
     log.innerHTML = localStorage.getItem('bookings') || '';
   </script>
 </body></html>`;
-  const v = assessDeliverable("build an ai receptionist booking ui", [{ path: "index.html", content: good }]);
+  // As a change to an existing project this is complete work.
+  const edit = assessDeliverable("build an ai receptionist booking ui", [{ path: "index.html", content: good }], { existingProject: true });
+  assert.equal(edit.complete, true, `expected complete, missing: ${edit.missing.join(" | ")}`);
+  // As a FRESH product build it is still only an outline — the gate must push for depth.
+  const fresh = assessDeliverable("build an ai receptionist booking ui", [{ path: "index.html", content: good }]);
+  assert.equal(fresh.complete, false, "a ~35 line screen is not a finished interface");
+  assert.match(fresh.missing.join(" "), /at least|control|state/i);
+});
+
+test("a genuinely deep interface passes the bar", () => {
+  const big = `<!doctype html><html><head><style>
+${":root{--bg:#0b0b0c;--fg:#eee;--accent:#b06a3a}\n".repeat(2)}
+${".row{display:flex;gap:12px;align-items:center;padding:8px 0}\n".repeat(220)}
+</style></head><body>
+  <main>
+    <h1>AI Receptionist</h1>
+    <form id="f">
+      <input id="name" placeholder="Caller" /><input id="phone" placeholder="Phone" />
+      <select id="reason"><option>Booking</option></select>
+      <textarea id="notes"></textarea>
+      <button id="save">Save</button><button id="clear">Clear</button>
+    </form>
+    <ul id="list"></ul>
+  </main>
+  <script>
+${"    document.addEventListener('DOMContentLoaded', () => {});\n".repeat(60)}
+    let state = []; 
+    function render(){ const l=document.getElementById('list'); l.innerHTML=''; state.forEach(s=>{const li=document.createElement('li'); li.textContent=s.name; l.appendChild(li);}); localStorage.setItem('calls', JSON.stringify(state)); }
+    document.getElementById('save').addEventListener('click', e => { e.preventDefault(); state.push({name:document.getElementById('name').value}); render(); });
+    state = JSON.parse(localStorage.getItem('calls')||'[]'); render();
+  </script></body></html>`;
+  const v = assessDeliverable("build a settings screen ui", [{ path: "index.html", content: big }, { path: "styles.css", content: ".x{color:red}\n".repeat(60) }]);
   assert.equal(v.complete, true, `expected complete, missing: ${v.missing.join(" | ")}`);
 });
 
@@ -104,4 +135,16 @@ test("the continuation brief lists the gaps and demands complete files", () => {
   assert.match(brief, /@@FILE/);
   assert.match(brief, /@@DONE/);
   for (const m of v.missing) assert.ok(brief.includes(m));
+});
+
+test("the ambition floor scales with the size of the ask", async () => {
+  const { ambitionFloor } = await import("../src/engine/completionGate");
+  const tweak = ambitionFloor("change the button colour");
+  const ui = ambitionFloor("build a settings screen");
+  const product = ambitionFloor("build the ai receptionist ui for my saas");
+  const everything = ambitionFloor("build my whole saas end to end");
+  assert.ok(tweak.lines < ui.lines, "a tweak must not demand a product");
+  assert.ok(ui.lines < product.lines, "a product must demand more than one screen");
+  assert.ok(product.lines < everything.lines, "a whole product must demand the most");
+  assert.ok(everything.lines >= 1000, `a whole SaaS should demand 1000+ lines, got ${everything.lines}`);
 });

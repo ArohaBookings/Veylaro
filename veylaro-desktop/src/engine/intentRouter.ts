@@ -51,27 +51,40 @@ export function asksForWork(text: string): boolean {
  *   3. A genuine question with no imperative stays conversation.
  *   4. Any remaining work signal builds; everything else is conversation.
  */
+/** The only things that are genuinely conversation: greetings, acknowledgements,
+    and questions about Laro itself. Everything else is work. */
+const PURE_CHAT =
+  /^(?:hi|hey|hello|yo|sup|hiya|howdy|thanks?|thank you|ta|cheers|cool|nice|great|awesome|perfect|ok(?:ay)?|sure|yep|yeah|nah|no|lol|haha|good (?:morning|afternoon|evening|night)|how(?:'?s| is| are)(?: it going| you| things)?|what'?s up|who (?:are|made) you|what are you|what can you do|tell me about yourself|are you (?:there|ok|real))\b[\s\S]{0,40}$/i;
+
+/**
+ * True when the message is small talk that deserves a fast chat reply.
+ *
+ * THE DEFAULT IS WORK. This is a coding agent with a project open — if the user
+ * says anything about the project ("the header is ugly", "receptionist ui",
+ * "hundreds of lines please"), it acts. The user should never have to phrase a
+ * request in magic words to get the agent to do its job.
+ *
+ * Only three things stay conversation:
+ *   1. Greetings / acknowledgements / questions about Laro itself.
+ *   2. A short genuine question that carries no instruction.
+ *   3. Nothing else.
+ */
 export function isFastInteraction(text: string): boolean {
   const clean = text.trim();
   if (!clean) return false;
 
-  // 1. Explicit instruction to do work — even "can you build X?" or
-  //    "get started on the ui, ok?" — never gets fobbed off with chat.
+  // An explicit instruction always works, even phrased as a question.
   if (asksForWork(clean)) return false;
-
-  // 2. Hard work signals.
   if (wantsToRunApp(clean) || looksLikeDebug(clean)) return false;
   if (/@@(?:FILE|READ|RUN|DONE)\b|(?:^|\s)(?:src|app|test|tests)\/|\.[cm]?[jt]sx?\b|\/Users\//i.test(clean)) return false;
-  if (/\b(?:this|the|my)\s+(?:code|function|file|repo|repository|project|codebase|app|ui|page|site|screen|component|feature)\b/i.test(clean)) return false;
 
-  // Long messages are briefs, not small talk.
-  if (clean.length > 180) return false;
+  // Greetings and "who are you" style chat.
+  if (PURE_CHAT.test(clean)) return true;
 
-  // 3. A real question with no imperative is conversation ("what should we
-  //    build?", "is that possible?", "how does X work?").
-  if (/\?\s*$/.test(clean)) return true;
+  // A short, genuine question with no instruction in it stays conversation
+  // ("what should we build?", "is that possible?").
+  if (/\?\s*$/.test(clean) && clean.length < 100) return true;
 
-  // 4. Otherwise: any work signal builds; the rest is conversation.
-  if (looksLikeBuild(clean)) return false;
-  return true;
+  // Everything else: do the work.
+  return false;
 }

@@ -555,8 +555,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // meter is uncapped. This is USAGE ONLY: it does not grant any Pro feature and
   // it does not change effectivePlan, so everything else in Pro still needs Pro.
   // Flip the switch off on the website and every client re-caps on the next poll.
-  const inLaunchWindow = !!(st.account?.launchTrialUntil && Date.now() < st.account.launchTrialUntil);
-  const launchUsageFree = remoteCfg.launch_month_on && inLaunchWindow && effectivePlan === "free";
+  // Launch month is ON: while the website switch is set, every free user gets
+  // unlimited USAGE (messages/chats). It is usage only — no Pro feature is
+  // unlocked and effectivePlan stays "free", so everything else in Pro is still
+  // paid. Flip launch_month_on off on the website and caps return on the next poll.
+  const launchUsageFree = remoteCfg.launch_month_on && effectivePlan === "free";
   const uncapped = remoteCfg.unlimited_for_all || effectivePlan !== "free" || launchUsageFree;
   const remaining = uncapped ? Infinity : Math.max(0, FREE_WEEKLY_LIMIT - st.usage.used);
   const locked = !uncapped && remaining <= 0;
@@ -1206,7 +1209,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               appendEvent(sess.id, agentMsg.id, { kind: "step", text: `💾 ${memPlan.note}` });
             }
             const broadMission = /\b(full|complete|entire|end[- ]to[- ]end|saas|game|repository|repo|debug|repair|migrate|refactor)\b/i.test(text);
-            const maxSteps = runSku === "lite" ? (broadMission ? 10 : 6) : runSku === "max" ? (broadMission ? 16 : 10) : (broadMission ? 13 : 8);
+            const maxSteps = runSku === "lite" ? (broadMission ? 16 : 12) : runSku === "max" ? (broadMission ? 22 : 14) : (broadMission ? 18 : 13);
             let filesWritten = 0;
             let lastNarration = "";
             let done = false;

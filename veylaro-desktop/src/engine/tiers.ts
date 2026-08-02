@@ -76,7 +76,7 @@ export const SYSTEM_TIERS: TierProfile[] = [
     // execution-selected best-of-N, and at temperature 0 every sampled candidate
     // is identical, so the tournament can't find a better one. A little variance
     // + keeping the candidate that actually passes is how Lite punches up.
-    runtime: { numPredict: 768, numCtx: 8192, keepAlive: "20m", temperature: 0.2 },
+    runtime: { numPredict: 1600, numCtx: 8192, keepAlive: "20m", temperature: 0.2 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
       designSystemKit: true, adversarialRatchet: true,
@@ -97,7 +97,7 @@ export const SYSTEM_TIERS: TierProfile[] = [
     diskGB: 7.6,
     contextTokens: 16384,
     modelTag: "laro-med",
-    runtime: { numPredict: 1536, numCtx: 16384, keepAlive: "20m", temperature: 0.0 },
+    runtime: { numPredict: 2048, numCtx: 16384, keepAlive: "20m", temperature: 0.1 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
       designSystemKit: true, adversarialRatchet: true,
@@ -118,7 +118,7 @@ export const SYSTEM_TIERS: TierProfile[] = [
     diskGB: 14,
     contextTokens: 32768,
     modelTag: "laro-max",
-    runtime: { numPredict: 2048, numCtx: 32768, keepAlive: "20m", temperature: 0.0 },
+    runtime: { numPredict: 3072, numCtx: 32768, keepAlive: "20m", temperature: 0.1 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
       designSystemKit: true, adversarialRatchet: true,

@@ -43,6 +43,25 @@ const STYLED = /<style|\.css|className=|class=|styled\.|tailwind|sx=\{|style=\{|
 const PLACEHOLDER =
   /\bTODO\b|\bFIXME\b|\bXXX\b|coming soon|lorem ipsum|placeholder (?:text|content|here)|implement(?:ation)? (?:this |it )?(?:here|later)|your code (?:goes )?here|(?:rest|remainder) of the (?:code|file|component|markup)|(?:code |markup )?(?:omitted|unchanged)(?: for brevity)?|^\s*\.{3,}\s*$/im;
 
+/** How much work the request actually implies. A one-line tweak and "build my
+    whole SaaS" are not the same job, and the gate must not treat them alike.
+    These floors are deliberately high: a real product is thousands of lines. */
+export function ambitionFloor(request: string): { lines: number; files: number; label: string } {
+  const r = request.toLowerCase();
+  const massive = /\b(whole|entire|complete|full|end[- ]to[- ]end|production|enterprise|comprehensive|everything|thousands|from scratch)\b/.test(r);
+  const product = /\b(saas|platform|product|system|dashboard|portal|admin|app|application|suite|marketplace|crm|erp|receptionist|booking|checkout|store|shop)\b/.test(r);
+  const ui = UI_REQUEST.test(r);
+  const api = API_REQUEST.test(r);
+  if (massive && product) return { lines: 1500, files: 8, label: "A complete product" };
+  if (massive) return { lines: 800, files: 5, label: "A complete build" };
+  if (product && (ui || api)) return { lines: 700, files: 5, label: "A product surface" };
+  if (product) return { lines: 500, files: 4, label: "A product" };
+  if (ui && api) return { lines: 450, files: 3, label: "A full-stack feature" };
+  if (ui) return { lines: 320, files: 2, label: "A real interface" };
+  if (api) return { lines: 260, files: 2, label: "A working service" };
+  return { lines: 120, files: 1, label: "A working result" };
+}
+
 function codeLines(content: string): number {
   return content
     .split("\n")
@@ -85,10 +104,15 @@ export function assessDeliverable(
   }
 
   // Editing an existing project legitimately produces small diffs; a fresh build
-  // that is only a stub does not.
+  // that is only a stub does not. The floor SCALES with the ask — a whole product
+  // is thousands of lines, a real interface is hundreds. Anything less is an outline.
   if (!opts.existingProject) {
-    if (totalCode < 25) {
-      missing.push(`Only ${totalCode} lines of real code exist — this is a stub, not a working result. Build the actual thing.`);
+    const bar = ambitionFloor(request);
+    if (totalCode < bar.lines || files.length < bar.files) {
+      missing.push(
+        `Only ${totalCode} lines across ${files.length} file(s). ${bar.label} needs roughly ${bar.lines}+ lines across ${bar.files}+ files. ` +
+          `Keep building: add the remaining screens, components, states, data, validation, empty/loading/error handling and styling. Do not stop at an outline.`,
+      );
     }
 
     if (wantsUI) {
@@ -102,10 +126,18 @@ export function assessDeliverable(
       if (!STYLED.test(joined) && !files.some((f) => isStyle(f.path))) {
         missing.push("There is no styling — add the CSS/classes so it looks like a real product, not unstyled HTML.");
       }
+      // A real interface has more than one control and more than one state.
+      const controls = (joined.match(/<(?:button|input|textarea|select)\b/gi) || []).length;
+      if (controls > 0 && controls < 4) {
+        missing.push(`Only ${controls} control(s) exist — build the full interface: the other fields, actions, list/detail views and empty/loading/error states.`);
+      }
+      if (!/\b(?:useState|useReducer|useEffect|localStorage|addEventListener|setState|signal\(|ref\()/i.test(joined)) {
+        missing.push("Nothing holds or updates state — wire real behaviour so the screen actually responds and remembers.");
+      }
     }
 
-    if (wantsScale && files.length < 3 && totalCode < 150) {
-      missing.push("A product-scale request needs more than one thin file — build the real screens/sections and wire them together.");
+    if (wantsScale && (files.length < 3 || totalCode < 260)) {
+      missing.push("A product-scale request needs several real screens/modules wired together — not one thin file. Build the rest of the product surface.");
     }
 
     if (wantsApi && !/\b(?:app\.(?:get|post|put|delete)|router\.|fetch\(|axios|createServer|export (?:async )?function (?:GET|POST)|@app\.route)\b/i.test(joined)) {
