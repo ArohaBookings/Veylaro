@@ -235,9 +235,9 @@ export const MODELS: Record<
   lite: {
     name: "Laro Lite",
     tag: "Featherweight",
-    disk: "2.0 GB",
+    disk: "3.6 GB",
     ram: "8 GB RAM minimum",
-    blurb: "Current local build: Qwen2.5-Coder 3B (4-bit) — code-specialised. Requires at least 8 GB RAM.",
+    blurb: "Current local build: Gemma 4 E2B 4-bit. Requires at least 8 GB RAM.",
   },
   med: {
     name: "Laro Med",

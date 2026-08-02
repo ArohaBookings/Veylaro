@@ -65,18 +65,18 @@ export const SYSTEM_TIERS: TierProfile[] = [
   {
     id: "lite",
     name: "Laro Lite",
-    tagline: "Code-specialised 3B. Runs on almost anything, still a real engineer.",
+    tagline: "Runs on almost anything. Still a real engineer.",
     minRamGB: 8,
     recommendedRamGB: 8,
-    paramsB: 3,
-    diskGB: 2.0,
-    contextTokens: 32768,
+    paramsB: 4,
+    diskGB: 3.6,
+    contextTokens: 16384,
     modelTag: "laro-lite",
-    // Qwen2.5-Coder-3B. Temperature is deliberately > 0: the Lite tier leans on
+    // Gemma 4B (E2B). Temperature is > 0 on purpose: the Lite tier leans on
     // execution-selected best-of-N, and at temperature 0 every sampled candidate
     // is identical, so the tournament can't find a better one. A little variance
-    // + picking the candidate that actually passes is how Lite punches up.
-    runtime: { numPredict: 1024, numCtx: 8192, keepAlive: "20m", temperature: 0.3 },
+    // + keeping the candidate that actually passes is how Lite punches up.
+    runtime: { numPredict: 768, numCtx: 8192, keepAlive: "20m", temperature: 0.2 },
     systems: {
       groundingGate: true, retrievalRAG: true, freshnessWeb: true,
       designSystemKit: true, adversarialRatchet: true,
