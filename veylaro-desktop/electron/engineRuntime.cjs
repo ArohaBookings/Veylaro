@@ -41,6 +41,11 @@ function modelTierConfig(sku = "lite") {
 
 function tierFromModelName(model) {
   const value = String(model || "").toLowerCase();
+  // The self-contained engine serves a GGUF and reports its PATH as the model id
+  // (…/models/<tier>/model.gguf). That path is written by our own installer, so
+  // the tier segment is authoritative — not a guess about someone else's model.
+  const owned = value.match(/[\\/]models[\\/](lite|med|max)[\\/][^\\/]*\.gguf$/);
+  if (owned) return owned[1];
   if (/(?:laro|veylaro)[-_ ]?max|(?:^|[-_/ ])24b(?:$|[-_/ ])/i.test(value)) return "max";
   if (/(?:laro|veylaro)[-_ ]?med|(?:^|[-_/ ])12b(?:$|[-_/ ])/i.test(value)) return "med";
   if (/(?:laro|veylaro)[-_ ]?lite|gemma-4-e2b|gemma-3.*4b|(?:^|[-_/ ])4b(?:$|[-_/ ])/i.test(value)) return "lite";
@@ -65,6 +70,10 @@ function selectEngineModel(models, preferred = "", sku = "lite") {
     const hit = names.find((model) => model === wanted || model.startsWith(`${wanted}:`));
     if (hit && tierFromModelName(hit) === sku) return hit;
   }
+  // Self-contained engine: it reports the GGUF path we installed for this tier.
+  // Still fails closed — only a model whose identified tier IS the requested sku.
+  const owned = names.find((model) => tierFromModelName(model) === sku);
+  if (owned) return owned;
   return "";
 }
 

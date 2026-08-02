@@ -115,7 +115,7 @@ async function ensureEngine(raw, preferredModel = "", sku = "lite") {
         break;
       }
     }
-    return { ok: false, url: engineBase(raw), error: `Veylaro MLX did not finish starting. ${engineLog.slice(-320)}` };
+    return { ok: false, url: engineBase(raw), error: `Laro's engine did not finish starting. ${engineLog.slice(-320)}` };
   }
 
   const memory = await readMemoryState();
@@ -191,7 +191,7 @@ async function ensureEngine(raw, preferredModel = "", sku = "lite") {
     }
     if (!engineProcess) break;
   }
-  const error = `Veylaro MLX did not become ready. ${engineLog.slice(-320)}`;
+  const error = `Laro's engine did not become ready. ${engineLog.slice(-320)}`;
   stopOwnedEngine();
   return { ok: false, url: engineBase(raw), error };
 }

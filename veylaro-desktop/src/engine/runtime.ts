@@ -45,6 +45,11 @@ type Discovery = { provider: "openai"; models: string[] };
 
 export function tierFromModelName(model: string): ModelId | undefined {
   const value = model.toLowerCase();
+  // The self-contained engine serves a GGUF and reports its PATH as the model id
+  // (…/models/<tier>/model.gguf). Our own installer writes that path, so the tier
+  // segment is authoritative — this is not relabelling an unrelated checkpoint.
+  const owned = value.match(/[\\/]models[\\/](lite|med|max)[\\/][^\\/]*\.gguf$/);
+  if (owned) return owned[1] as ModelId;
   if (/(?:laro|veylaro)[-_ ]?max|(?:^|[-_/ ])24b(?:$|[-_/ ])/i.test(value)) return "max";
   if (/(?:laro|veylaro)[-_ ]?med|(?:^|[-_/ ])12b(?:$|[-_/ ])/i.test(value)) return "med";
   if (/(?:laro|veylaro)[-_ ]?lite|gemma-4-e2b|(?:^|[-_/ ])4b(?:$|[-_/ ])/i.test(value)) return "lite";
@@ -58,6 +63,10 @@ export function selectInstalledModel(models: string[], preferred: string, sku: M
     const hit = models.find((model) => model === wanted || model.startsWith(`${wanted}:`));
     if (hit && tierFromModelName(hit) === sku) return hit;
   }
+  // Self-contained engine: it reports the GGUF path we installed for this tier.
+  // Still fails closed — only a model whose identified tier IS the requested sku.
+  const owned = models.find((model) => tierFromModelName(model) === sku);
+  if (owned) return owned;
   return "";
 }
 
