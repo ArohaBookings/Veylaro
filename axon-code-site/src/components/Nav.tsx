@@ -47,7 +47,7 @@ export function Nav() {
               Start free
             </Link>
             <Link to="/download" className="btn primary sm">
-              <DownloadIcon size={15} /> Get early access
+              <DownloadIcon size={15} /> Download
             </Link>
             <button className="nav-burger" aria-label="Menu" onClick={() => setOpen((v) => !v)}>
               {open ? <Close /> : <Menu />}
