@@ -37,6 +37,7 @@ import { compileExecutionContract } from "../src/engine/contractCompiler.ts";
 import { verificationCommands, reproductionCommand } from "../src/engine/verificationPlan.ts";
 import { compactFailureEvidence, diagnoseFailure } from "../src/engine/failureKernel.ts";
 import { classifyModelCommand } from "../src/engine/commandPolicy.ts";
+import { assessDeliverable, continuationBrief } from "../src/engine/completionGate.ts";
 import type { ModelId } from "../src/types.ts";
 
 const SERVER = { name: "veylaro-code", version: "0.1.0" };
@@ -202,6 +203,7 @@ async function headlessBuild(args: BuildArgs) {
   ];
 
   const written = new Map<string, { plus: number; minus: number; op: "create" | "edit" }>();
+  const gateRejections: string[] = [];
   const commands: { cmd: string; ok: boolean; allowed: boolean; classification: string; out: string }[] = [];
   const narration: string[] = [];
   const steps: { step: number; files: string[]; reads: string[]; runs: string[]; done: boolean }[] = [];
@@ -279,6 +281,22 @@ async function headlessBuild(args: BuildArgs) {
     }
 
     steps.push({ step: step + 1, files: filesThisStep, reads, runs, done: sawDone });
+
+    // COMPLETION GATE: @@DONE is a claim. Judge the artifact on disk; if it's a
+    // stub, reject the claim and keep building with a concrete list of gaps.
+    if (sawDone && step < maxSteps - 1) {
+      const onDisk = [...written.keys()].map((rel) => ({
+        path: rel,
+        content: readIfExists(path.join(scope, rel)) ?? "",
+      }));
+      const verdict = assessDeliverable(args.task, onDisk, { existingProject });
+      if (!verdict.complete) {
+        sawDone = false;
+        gateRejections.push(verdict.reason);
+        messages.push({ role: "user", content: continuationBrief(verdict) });
+        continue;
+      }
+    }
 
     if (sawDone) break;
     if (feedback.length) {
@@ -359,6 +377,7 @@ async function headlessBuild(args: BuildArgs) {
     verification,
     verified,
     repairsUsed,
+    gateRejections,
     narration: narration.slice(-12),
     grade,
   };

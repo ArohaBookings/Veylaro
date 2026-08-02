@@ -94,6 +94,7 @@ import { evidenceBudget, EXECUTION_LATTICE_PROMPT } from "../engine/executionLat
 import { cleanAssistantText, collapseReason } from "../engine/outputHygiene";
 import { extractRepairFiles } from "../engine/repairCandidates";
 import { liteReinforced, canSyntaxCheck, checkInProcess, wroteCodeButNoFile, protocolRepairBrief } from "../engine/liteBoost";
+import { assessDeliverable, continuationBrief } from "../engine/completionGate";
 import { synthesizeSemanticRepairs } from "../engine/semanticRepair";
 import { explicitlyRequestsTestEdits, isProtectedTestPath } from "../engine/testIntegrity";
 import { classifyModelCommand } from "../engine/commandPolicy";
@@ -810,6 +811,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const scopeName = sess.scope.split(/[\\/]/).pop() || "the project";
         const canWrite = !!window.veylaro?.writeFile;
         const writtenPaths: string[] = []; // everything Laro wrote, for the auto-Viewport
+        const deliverable = new Map<string, string>(); // path -> final content, for the completion gate
         const writeFeedback: string[] = [];
         const runSnapshots = new Map<string, string | null>();
         let runRolledBack = false;
@@ -896,6 +898,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return false;
           }
           const { plus, minus, op } = diffCounts(old, content);
+          deliverable.set(rel, content); // what the completion gate judges
           if (!opts.silent) {
             writtenPaths.push(rel);
             appendEvent(sess.id, agentMsg.id, {
@@ -1558,6 +1561,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   content: `Real tool results from this machine:\n\n${observations.join("\n\n")}\n\nContinue from this evidence. Do not repeat a read or command unless the state changed. ${requestedDone ? "You requested completion before seeing these results; verify them first, then output @@DONE only if the contract is satisfied." : ""}`,
                 });
                 continue;
+              }
+              // COMPLETION GATE — "@@DONE" is a claim, not evidence. Small models
+              // habitually write one skeleton file and declare victory (measured:
+              // a 227-byte <h1>AI Receptionist</h1> in 5s). Judge what's actually on
+              // disk against what was asked; when it falls short, refuse the claim
+              // and hand back the specific gaps so the next turn closes them. The
+              // gap list drives the loop instead of a vague "keep going".
+              if (deliverable.size && step < maxSteps) {
+                const verdict = assessDeliverable(text, [...deliverable].map(([p, c]) => ({ path: p, content: c })), {
+                  existingProject: !!verificationInput.rootEntries?.length,
+                });
+                if (!verdict.complete) {
+                  if (requestedDone) stepLine(`not done yet — ${verdict.missing.length} gap${verdict.missing.length === 1 ? "" : "s"} left, keeping going`);
+                  convo.push({ role: "user", content: continuationBrief(verdict) });
+                  continue;
+                }
               }
               if (requestedDone) { done = true; break; }
               // No file ops this step. If Laro just described a plan (which small
