@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactN
 import {
   Account, AgentEvent, Attachment, BgTask, BrowseStep, Checkpoint, FileStat, FREE_WEEKLY_LIMIT, Msg, MODELS,
   LAUNCH_FREE_MONTH_MS, OFFLINE_GRACE_MS, PAST_DUE_GRACE_MS, PermMode, Plan, Question, REFERRAL_MAX,
-  Session, Settings, SideMsg, SideThread, TermLine, Usage, VaultItem,
+  Session, Settings, SideMsg, SideThread, TermLine, Usage, VaultItem, APP_VERSION,
 } from "../types";
 import { refreshRemoteConfig, remoteConfig, RemoteConfig } from "../engine/remoteConfig";
 
@@ -133,6 +133,20 @@ function ensureSideThreads(p: { sideThreads?: SideThread[]; activeSideThread?: s
   }
   const activeId = threads.some((t) => t.id === p.activeSideThread) ? (p.activeSideThread as string) : threads[threads.length - 1].id;
   return { threads, activeId };
+}
+
+/** True when `latest` is a strictly newer dotted version than `current`
+    (e.g. "1.1.0" > "1.0.3"). Used to surface the auto-update prompt only when a
+    genuinely newer build has been published. */
+export function isNewerVersion(latest: string, current: string): boolean {
+  const p = (v: string) => v.split(".").map((n) => parseInt(n, 10) || 0);
+  const a = p(latest);
+  const b = p(current);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const d = (a[i] || 0) - (b[i] || 0);
+    if (d !== 0) return d > 0;
+  }
+  return false;
 }
 
 /** Only reach for the web on clearly current/factual questions — general chat
@@ -277,6 +291,8 @@ interface Store extends Persisted {
   remaining: number; // free-tier messages left this week
   locked: boolean;
   launchUsageFree: boolean; // launch-month promo: usage uncapped for free users (usage only, not Pro features)
+  updateReady: boolean; // a newer app version has been published — surface a download prompt
+  latestVersion: string; // the latest published app version from remote config
   // actions
   signIn(name: string, email: string, license?: string): Promise<Account>;
   signOut(): void;
@@ -533,6 +549,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const uncapped = remoteCfg.unlimited_for_all || effectivePlan !== "free" || launchUsageFree;
   const remaining = uncapped ? Infinity : Math.max(0, FREE_WEEKLY_LIMIT - st.usage.used);
   const locked = !uncapped && remaining <= 0;
+  // Auto-update: the 5-minute config poll carries the latest published app
+  // version. The moment Leo bumps latest_app_version in the admin panel, every
+  // running client sees a newer build here and surfaces a one-tap download
+  // prompt — no store listing, no manual "check for updates".
+  const latestVersion = remoteCfg.latest_app_version || APP_VERSION;
+  const updateReady = isNewerVersion(latestVersion, APP_VERSION);
 
   /* ---- session mutation helpers ---- */
 
@@ -656,6 +678,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     remaining,
     locked,
     launchUsageFree,
+    updateReady,
+    latestVersion,
     lastSaved,
     effectivePlan,
     billingStatus,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { OWNER_EMAIL, StoreProvider, uid, useStore } from "./state/store";
-import { Attachment } from "./types";
+import { Attachment, APP_VERSION } from "./types";
 import { VeylaroMark } from "./components/Logo";
 import { Sidebar } from "./components/Sidebar";
 import { Chat } from "./components/Chat";
@@ -105,6 +105,24 @@ function Shell() {
               : "preview brain"}
         </span>
       </div>
+
+      {store.updateReady && (
+        <div className="update-bar" role="status">
+          <span>
+            <b>Veylaro Code v{store.latestVersion} is here.</b> You're on v{APP_VERSION} — grab the update to get the latest.
+          </span>
+          <button
+            className="btn primary sm"
+            onClick={() => {
+              const url = (import.meta.env.DEV ? "http://localhost:5174" : "https://veylaroai.com") + "/#/download";
+              if (window.veylaro) (window as any).open?.(url);
+              else window.open(url, "_blank");
+            }}
+          >
+            Download update
+          </button>
+        </div>
+      )}
 
       <div className="body" style={{ gridTemplateColumns: "var(--side-w) 1fr auto" }}>
         <Sidebar
