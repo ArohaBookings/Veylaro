@@ -99,10 +99,10 @@ export function AdminControls() {
           </button>
         </Row>
         <Row
-          title="Launch month — first month unlimited"
+          title="Launch month — first month unlimited usage"
           sub={cfg.launch_month_on
-            ? "Every new account gets 30 days of unlimited, no card."
-            : "Off — new accounts start on the normal free tier."}
+            ? "On — free users get unlimited USAGE for their first 30 days (no card). Usage only; all other Pro features still require Pro. Takes effect in the app on the next config poll."
+            : "Off — free users are on the normal 50-messages-a-week cap."}
         >
           <button className="btn ghost" disabled={busy !== null || state === "missing"}
             onClick={() => set({ launch_month_on: !cfg.launch_month_on }, "Launch month")}>

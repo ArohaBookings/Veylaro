@@ -113,7 +113,7 @@ export function PrivacyHud() {
 /* ============ Usage meter ring (free tier) ============ */
 
 export function UsageRing() {
-  const { usage, effectivePlan, billingStatus } = useStore();
+  const { usage, effectivePlan, billingStatus, launchUsageFree, account } = useStore();
   const plan = effectivePlan;
   if (plan !== "free") {
     return (
@@ -122,6 +122,20 @@ export function UsageRing() {
         <div className="lbl">
           <b>Unlimited usage</b>
           {billingStatus.label}{billingStatus.daysLeft != null ? ` · ${billingStatus.daysLeft}d left` : " — run it all day."}
+        </div>
+      </div>
+    );
+  }
+  // Launch-month promo: free plan, but usage is uncapped for the launch window.
+  // Make clear it's USAGE only — Pro features still need Pro.
+  if (launchUsageFree) {
+    const daysLeft = account?.launchTrialUntil ? Math.max(1, Math.ceil((account.launchTrialUntil - Date.now()) / 86400000)) : null;
+    return (
+      <div className="meter">
+        <span className="inf">∞</span>
+        <div className="lbl">
+          <b>Unlimited usage · launch month</b>
+          {daysLeft != null ? `${daysLeft} day${daysLeft === 1 ? "" : "s"} left · Pro features still need Pro` : "Pro features still need Pro"}
         </div>
       </div>
     );

@@ -186,50 +186,76 @@ export async function* veylaroChat(
   if (!found) throw new Error("the local engine is not ready");
   const selectedModel = selectInstalledModel(found.models, model, sku);
   if (!selectedModel) throw new Error(`the local endpoint does not provide Laro ${sku}`);
-  const res = await fetch(`${base}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: selectedModel,
-      messages,
-      stream: true,
-      // mlx-lm 0.29.1's continuous BatchRotatingKVCache can corrupt the
-      // second Gemma request when prompt lengths differ. A fixed seed routes
-      // the server through its stable single-sequence generator and also
-      // makes agent retries reproducible.
-      seed: overrides.seed ?? 42,
-      max_tokens: overrides.num_predict ?? optsFor(sku).num_predict,
-      temperature: overrides.temperature ?? optsFor(sku).temperature,
-      top_p: overrides.top_p ?? optsFor(sku).top_p,
-    }),
-    signal,
+  const requestBody = JSON.stringify({
+    model: selectedModel,
+    messages,
+    stream: true,
+    // mlx-lm 0.29.1's continuous BatchRotatingKVCache can corrupt the
+    // second Gemma request when prompt lengths differ. A fixed seed routes
+    // the server through its stable single-sequence generator and also
+    // makes agent retries reproducible.
+    seed: overrides.seed ?? 42,
+    max_tokens: overrides.num_predict ?? optsFor(sku).num_predict,
+    temperature: overrides.temperature ?? optsFor(sku).temperature,
+    top_p: overrides.top_p ?? optsFor(sku).top_p,
   });
-  if (!res.ok || !res.body) throw new Error(`Laro engine responded ${res.status}`);
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() || "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const payload = line.startsWith("data:") ? line.slice(5).trim() : line;
-        if (!payload || payload === "[DONE]") return;
-        const j = JSON.parse(payload);
-        const think = j?.choices?.[0]?.delta?.reasoning_content || j?.choices?.[0]?.delta?.reasoning;
-        if (think) yield { type: "think", chunk: think };
-        const chunk = j?.choices?.[0]?.delta?.content;
-        if (chunk) yield { type: "text", chunk };
-        if (j?.choices?.[0]?.finish_reason) return;
-      } catch {
-        /* partial line — keep buffering */
+
+  // Reliability: under memory pressure mlx-lm can close the socket before it
+  // answers ("Remote end closed connection without response"). That is safe to
+  // retry ONLY before any token has streamed — once output has started a retry
+  // would duplicate it, so we surface the error instead. Bounded, with backoff.
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; ; attempt++) {
+    let produced = false;
+    try {
+      const res = await fetch(`${base}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: requestBody,
+        signal,
+      });
+      if (!res.ok || !res.body) throw new Error(`Laro engine responded ${res.status}`);
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const payload = line.startsWith("data:") ? line.slice(5).trim() : line;
+            if (!payload || payload === "[DONE]") return;
+            const j = JSON.parse(payload);
+            const think = j?.choices?.[0]?.delta?.reasoning_content || j?.choices?.[0]?.delta?.reasoning;
+            if (think) { produced = true; yield { type: "think", chunk: think }; }
+            const chunk = j?.choices?.[0]?.delta?.content;
+            if (chunk) { produced = true; yield { type: "text", chunk }; }
+            if (j?.choices?.[0]?.finish_reason) return;
+          } catch {
+            /* partial line — keep buffering */
+          }
+        }
       }
+      return; // stream ended cleanly
+    } catch (err) {
+      if (!produced && attempt < MAX_ATTEMPTS && !signal?.aborted && isTransientEngineError(err)) {
+        await new Promise((r) => setTimeout(r, 300 * attempt));
+        continue;
+      }
+      throw err;
     }
   }
+}
+
+/** A connection that drops before answering is a transient engine hiccup (memory
+    pressure, cold weights); a 4xx/5xx status or a real abort is not. */
+function isTransientEngineError(err: unknown): boolean {
+  const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return /remote end closed|econnreset|connection (?:reset|closed|refused|aborted)|socket hang up|network error|fetch failed|load failed|terminated|premature close/.test(m);
 }
 
 export const LARO_SYSTEM_PROMPT = `You are Laro, the engine inside Veylaro Code — a local AI coding agent. Inference and project work run on the user's machine; optional search and account services are disclosed separately. Be sharp, warm and honest. Narrate what you do like a great pair-programmer: one plain-English line, then precise dev detail. Never invent file contents, command output, test results or benchmarks. When a task is ambiguous, ask at most four crisp questions, one at a time, then act. Lead with the answer; be fast.`;

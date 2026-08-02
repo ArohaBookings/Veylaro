@@ -318,7 +318,7 @@ export function Composer({
           </span>
           {plan === "free" && !locked && (
             <span style={{ fontSize: 11, color: "var(--dim)", fontFamily: "var(--font-mono)" }}>
-              {store.remaining} msgs left this week
+              {store.launchUsageFree ? "Unlimited · launch month" : `${store.remaining} msgs left this week`}
             </span>
           )}
           {running ? (

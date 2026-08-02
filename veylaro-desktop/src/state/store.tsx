@@ -93,6 +93,7 @@ import { GROUNDING_NOTE, LARO_SIDE_CHARTER, SOVEREIGN_FORGE_PROMPT, laroContext 
 import { evidenceBudget, EXECUTION_LATTICE_PROMPT } from "../engine/executionLattice";
 import { cleanAssistantText, collapseReason } from "../engine/outputHygiene";
 import { extractRepairFiles } from "../engine/repairCandidates";
+import { liteReinforced, canSyntaxCheck, checkInProcess } from "../engine/liteBoost";
 import { synthesizeSemanticRepairs } from "../engine/semanticRepair";
 import { explicitlyRequestsTestEdits, isProtectedTestPath } from "../engine/testIntegrity";
 import { classifyModelCommand } from "../engine/commandPolicy";
@@ -275,6 +276,7 @@ interface Store extends Persisted {
   active: Session | null;
   remaining: number; // free-tier messages left this week
   locked: boolean;
+  launchUsageFree: boolean; // launch-month promo: usage uncapped for free users (usage only, not Pro features)
   // actions
   signIn(name: string, email: string, license?: string): Promise<Account>;
   signOut(): void;
@@ -520,7 +522,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const effectivePlan: Plan = billingStatus.plan;
   // Global admin kill-switch: when Leo flips "Unlimited for everyone" on the
   // website, every client uncaps on its next config poll — free or paid.
-  const uncapped = remoteCfg.unlimited_for_all || effectivePlan !== "free";
+  //
+  // Launch promo: while Leo's "launch month" switch is ON on the website, a free
+  // user inside their launch-month window gets unlimited USAGE — the message
+  // meter is uncapped. This is USAGE ONLY: it does not grant any Pro feature and
+  // it does not change effectivePlan, so everything else in Pro still needs Pro.
+  // Flip the switch off on the website and every client re-caps on the next poll.
+  const inLaunchWindow = !!(st.account?.launchTrialUntil && Date.now() < st.account.launchTrialUntil);
+  const launchUsageFree = remoteCfg.launch_month_on && inLaunchWindow && effectivePlan === "free";
+  const uncapped = remoteCfg.unlimited_for_all || effectivePlan !== "free" || launchUsageFree;
   const remaining = uncapped ? Infinity : Math.max(0, FREE_WEEKLY_LIMIT - st.usage.used);
   const locked = !uncapped && remaining <= 0;
 
@@ -645,6 +655,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     active,
     remaining,
     locked,
+    launchUsageFree,
     lastSaved,
     effectivePlan,
     billingStatus,
@@ -826,6 +837,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // progress. Skip it so Laro can't spin re-saving the same file ("adding a
           // border", "adding padding"…) burning steps, time and RAM for nothing.
           if (old !== null && old.trim() === content.trim()) return false;
+          // Lite Syntax Gate (Lite tier only): Gemma-4B sometimes emits code that
+          // doesn't parse — an extra ')' in a conditional was the exact failure on
+          // the SaaS-auth fixture. Catch it before it's written or run, and hand back
+          // the precise location so the next turn is a surgical fix, not a wasted
+          // repair cycle running cryptic test errors. Med/Max skip this entirely.
+          if (liteReinforced(requestedSku) && canSyntaxCheck(rel)) {
+            const syn = checkInProcess(rel, content);
+            if (syn) {
+              writeFeedback.push(`EDIT ${rel}: rejected before write — it does not parse. ${syn} Return the COMPLETE corrected file; count your brackets and keep the intended logic.`);
+              appendEvent(sess.id, agentMsg.id, { kind: "step", text: `⛔ ${rel} didn't parse (${syn}) — asked Laro for a clean version` });
+              return false;
+            }
+          }
           if (!runSnapshots.has(rel)) runSnapshots.set(rel, old);
           const res = await window.veylaro!.writeFile!(abs, content, { ...scopedCtx, confirmed: editsApproved });
           if (!res.ok) {
