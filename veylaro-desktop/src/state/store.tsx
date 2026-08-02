@@ -486,6 +486,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // Smart-load: DON'T pre-load the weights at startup. The app stays light
         // in RAM until the first real message, which is when the model loads (with
         // a visible "Loading Laro into memory…" state). After that it's kept warm.
+      } else if (window.veylaro?.isDesktop) {
+        // Self-contained desktop app: nothing is serving on the endpoint yet, but
+        // the app BUNDLES its own llama.cpp engine and starts it on the first
+        // message (ensureLocalEngine → engineEnsure). Force the real path so the
+        // shipped app never sits in demo / preview-brain mode replaying scripted
+        // output instead of actually running the model. Demo mode is only ever for
+        // the browser preview, which has no window.veylaro to start an engine.
+        setSt((p) => (p.settings.engine === "veylaro"
+          ? p
+          : { ...p, settings: { ...p.settings, engine: "veylaro" } }));
       }
     })();
     return () => { cancelled = true; };

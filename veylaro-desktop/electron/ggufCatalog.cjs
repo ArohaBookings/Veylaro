@@ -16,15 +16,33 @@ const path = require("path");
 const { downloadVerifiedFile } = require("./modelInstaller.cjs");
 const { ggufLooksComplete } = require("./engineRuntime.cjs");
 
+// All three tiers are Gemma (commercial use permitted under the Gemma Terms) and
+// load in llama.cpp. SHA-256 pins are HuggingFace's LFS X-Linked-ETag (verified:
+// lite's pin equals the locally-computed hash of the downloaded file).
 const GGUF_MODELS = Object.freeze({
   lite: Object.freeze({
     tier: "lite",
-    // Gemma 4B (E2B) — commercial use permitted under the Gemma Terms.
     checkpoint: "unsloth/gemma-3n-E2B-it-GGUF",
     url: "https://huggingface.co/unsloth/gemma-3n-E2B-it-GGUF/resolve/main/gemma-3n-E2B-it-Q4_K_M.gguf",
     bytes: 3026881888,
     sha256: "189d42b4303cb1078ea8d00963f437cd6d884069b7ba2ba80b38cd09585dc415",
     minimumRamGB: 8,
+  }),
+  med: Object.freeze({
+    tier: "med",
+    checkpoint: "unsloth/gemma-3-12b-it-GGUF",
+    url: "https://huggingface.co/unsloth/gemma-3-12b-it-GGUF/resolve/main/gemma-3-12b-it-Q4_K_M.gguf",
+    bytes: 7300778336,
+    sha256: "15b8fd9d8672cd4240c178c217ca781409291f34e353d2e913b29c7602ceb3ff",
+    minimumRamGB: 12,
+  }),
+  max: Object.freeze({
+    tier: "max",
+    checkpoint: "unsloth/gemma-3-27b-it-GGUF",
+    url: "https://huggingface.co/unsloth/gemma-3-27b-it-GGUF/resolve/main/gemma-3-27b-it-Q4_K_M.gguf",
+    bytes: 16546688736,
+    sha256: "f1b699659942c777bd3ec0bcb527d6ebf34ae14ca76e3af103d58d0c9cbdadee",
+    minimumRamGB: 24,
   }),
 });
 
