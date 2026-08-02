@@ -15,7 +15,7 @@
     "app": "electron .",
     "dist": "node build/releasePreflight.cjs && vite build && electron-builder --mac --publish never",
     "dist:mac": "node build/releasePreflight.cjs && vite build && electron-builder --mac zip --publish never",
-    "dist:local": "VEYLARO_LOCAL_ADHOC=1 vite build && electron-builder --mac zip --publish never",
+    "dist:local": "VEYLARO_LOCAL_ADHOC=1 vite build && CSC_IDENTITY_AUTO_DISCOVERY=false VEYLARO_LOCAL_ADHOC=1 electron-builder --mac zip --arm64 --publish never -c.mac.identity=null -c.mac.forceCodeSigning=false -c.mac.notarize=false -c.mac.hardenedRuntime=false",
     "dist:win": "node build/releasePreflight.cjs && vite build && electron-builder --win --publish never",
     "dist:all": "node build/releasePreflight.cjs && vite build && electron-builder --mac zip --win --publish never",
     "cli": "node cli/veylaro.cjs",
