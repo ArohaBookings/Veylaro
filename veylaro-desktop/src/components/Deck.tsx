@@ -13,22 +13,51 @@ import {
   truthCappedVisualScore,
 } from "../engine/functionalGate";
 
-/* Side chat — talk to Laro's featherweight side while the heavy work runs */
+/* Side chat — a pure conversational Laro (talk + web only). Streams live from
+   the local model, auto-scrolls, and holds several chats you can switch between. */
 function SideChat() {
-  const { sideChat, sendSideChat } = useStore();
+  const { sideThreads, activeSideThread, sendSideChat, newSideChat, selectSideChat } = useStore();
   const [text, setText] = useState("");
-  const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [(sideChat || []).length]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const threads = sideThreads && sideThreads.length ? sideThreads : [];
+  const active = threads.find((t) => t.id === activeSideThread) || threads[threads.length - 1];
+  const msgs = active?.msgs || [];
+  const last = msgs[msgs.length - 1];
+
+  // Pin to the bottom as messages arrive AND as the streaming reply grows.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [active?.id, msgs.length, last?.text, last?.streaming]);
+
   return (
     <div className="schat">
-      <div className="schat-scroll">
-        {!(sideChat || []).length && (
-          <div className="schat-hint">✦ hey — quick questions live here. i run featherweight so the main build never slows down.</div>
+      <div className="schat-tabs">
+        <div className="schat-tablist">
+          {threads.map((th) => (
+            <button
+              key={th.id}
+              className={`schat-tab ${th.id === active?.id ? "on" : ""}`}
+              title={th.title}
+              onClick={() => selectSideChat(th.id)}
+            >
+              {th.title || "Chat"}
+            </button>
+          ))}
+        </div>
+        <button className="schat-new" title="Start a new chat" onClick={() => newSideChat()}>＋</button>
+      </div>
+      <div className="schat-scroll" ref={scrollRef}>
+        {!msgs.length && (
+          <div className="schat-hint">✦ hey — this is chat + web only, so the main build never slows down. ask me anything.</div>
         )}
-        {(sideChat || []).map((m) => (
-          <div key={m.id} className={`schat-m ${m.role}`}>{m.text}</div>
+        {msgs.map((m) => (
+          <div key={m.id} className={`schat-m ${m.role}`}>
+            {m.text}
+            {m.streaming && (m.text ? <span className="schat-caret" /> : <span className="schat-typing">Laro is thinking…</span>)}
+          </div>
         ))}
-        <div ref={endRef} />
       </div>
       <div className="schat-bar">
         <input

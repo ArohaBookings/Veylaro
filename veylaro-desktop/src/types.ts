@@ -115,6 +115,15 @@ export interface SideMsg {
   role: "you" | "laro";
   text: string;
   ts: number;
+  streaming?: boolean; // true while tokens are still arriving — UI shows a caret
+}
+
+/** A single side-chat thread. The Viewport "Chat" tab can hold several. */
+export interface SideThread {
+  id: string;
+  title: string;
+  msgs: SideMsg[];
+  createdAt: number;
 }
 
 export interface TermLine {

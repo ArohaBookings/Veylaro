@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactN
 import {
   Account, AgentEvent, Attachment, BgTask, BrowseStep, Checkpoint, FileStat, FREE_WEEKLY_LIMIT, Msg, MODELS,
   LAUNCH_FREE_MONTH_MS, OFFLINE_GRACE_MS, PAST_DUE_GRACE_MS, PermMode, Plan, Question, REFERRAL_MAX,
-  Session, Settings, SideMsg, TermLine, Usage, VaultItem,
+  Session, Settings, SideMsg, SideThread, TermLine, Usage, VaultItem,
 } from "../types";
 import { refreshRemoteConfig, remoteConfig, RemoteConfig } from "../engine/remoteConfig";
 
@@ -119,6 +119,28 @@ import { precedentsAsPrompt, recordVerifiedPrecedent } from "../engine/localLear
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
+/** Ensure the side-chat has at least one thread, migrating the legacy single
+    `sideChat` list into a thread the first time. Pure — safe inside setSt. */
+function ensureSideThreads(p: { sideThreads?: SideThread[]; activeSideThread?: string; sideChat?: SideMsg[] }): {
+  threads: SideThread[];
+  activeId: string;
+} {
+  let threads = p.sideThreads && p.sideThreads.length ? p.sideThreads : [];
+  if (!threads.length) {
+    const migrated = p.sideChat && p.sideChat.length ? p.sideChat : [];
+    threads = [{ id: uid(), title: migrated.length ? (migrated[0].text.slice(0, 42) || "Chat") : "New chat", msgs: migrated, createdAt: Date.now() }];
+  }
+  const activeId = threads.some((t) => t.id === p.activeSideThread) ? (p.activeSideThread as string) : threads[threads.length - 1].id;
+  return { threads, activeId };
+}
+
+/** Only reach for the web on clearly current/factual questions — general chat
+    and coding talk answer straight from the model (and stay fast). */
+const WEB_HINT = /\b(today|tonight|latest|current|right now|news|price|cost|weather|release[ds]?|version|update[ds]?|score|won|winner|result|202[4-9]|stock|rate|who is|when is|how much|deadline|schedule)\b/i;
+function needsWeb(t: string): boolean {
+  return t.length > 6 && WEB_HINT.test(t);
+}
+
 export function weekKey(d = new Date()): string {
   // ISO week key, e.g. 2026-W28
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -141,7 +163,9 @@ interface Persisted {
   usage: Usage;
   onboarded: boolean;
   vault: VaultItem[];
-  sideChat?: SideMsg[]; // the featherweight companion chat
+  sideChat?: SideMsg[]; // legacy single companion chat — migrated into sideThreads
+  sideThreads?: SideThread[]; // the Viewport "Chat" tab — one or more chat threads
+  activeSideThread?: string; // id of the thread shown in the Chat tab
   autoEngineDone?: boolean; // live-weights auto-switch runs once, ever
 }
 
@@ -269,6 +293,8 @@ interface Store extends Persisted {
   removeVaultItem(id: string): void;
   setDraft(sessionId: string, draft: string): void;
   sendSideChat(text: string): void;
+  newSideChat(): void;
+  selectSideChat(id: string): void;
   setFullDiskAccess(on: boolean): void;
   redeemReferral(code: string): { ok: boolean; msg: string };
   previewPlan(): void; // Future Simulator: predicted outcome of the pending plan
@@ -1813,36 +1839,115 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true, msg: "Applied — a free month is on your account, and 10% off your first paid month." };
     },
 
+    newSideChat() {
+      const thread: SideThread = { id: uid(), title: "New chat", msgs: [], createdAt: Date.now() };
+      setSt((p) => {
+        const { threads } = ensureSideThreads(p);
+        return { ...p, sideThreads: [...threads, thread].slice(-12), activeSideThread: thread.id };
+      });
+    },
+
+    selectSideChat(id) {
+      setSt((p) => ({ ...p, activeSideThread: id }));
+    },
+
+    /* The Viewport "Chat" tab: a pure conversational Laro. It can talk and
+       search the web — it never writes files or runs builds (that's the main
+       chat). It streams live from whatever local model is actually up, so it
+       uses real AI even when the main build engine is in preview mode. */
     sendSideChat(text) {
       const t = text.trim();
       if (!t) return;
-      const you: SideMsg = { id: uid(), role: "you", text: t, ts: Date.now() };
-      setSt((p) => ({ ...p, sideChat: [...(p.sideChat || []), you].slice(-60) }));
-      const respond = (reply: string) =>
-        setSt((p) => ({ ...p, sideChat: [...(p.sideChat || []), { id: uid(), role: "laro" as const, text: reply, ts: Date.now() }].slice(-60) }));
-      if (st.settings.engine === "veylaro") {
-        (async () => {
+      const youId = uid();
+      const replyId = uid();
+
+      // Add the user turn + an empty streaming reply into the active thread.
+      let activeId = "";
+      setSt((p) => {
+        const { threads, activeId: aid } = ensureSideThreads(p);
+        activeId = aid;
+        const you: SideMsg = { id: youId, role: "you", text: t, ts: Date.now() };
+        const reply: SideMsg = { id: replyId, role: "laro", text: "", ts: Date.now(), streaming: true };
+        return {
+          ...p,
+          sideThreads: threads.map((th) =>
+            th.id === aid
+              ? {
+                  ...th,
+                  title: th.title === "New chat" || !th.msgs.length ? t.slice(0, 42) : th.title,
+                  msgs: [...th.msgs, you, reply].slice(-120),
+                }
+              : th,
+          ),
+          activeSideThread: aid,
+        };
+      });
+
+      const setReply = (patch: Partial<SideMsg>) =>
+        setSt((p) => ({
+          ...p,
+          sideThreads: (p.sideThreads || []).map((th) =>
+            th.id === activeId
+              ? { ...th, msgs: th.msgs.map((m) => (m.id === replyId ? { ...m, ...patch } : m)) }
+              : th,
+          ),
+        }));
+
+      (async () => {
+        // Find a live local engine, independent of the main build-engine toggle:
+        // the configured URL first, then the usual local endpoints.
+        const urls = [...new Set([st.settings.engineUrl, "http://127.0.0.1:8080", "http://127.0.0.1:11434"])].filter(Boolean);
+        let url = "";
+        let model = "";
+        for (const u of urls) {
           try {
-            let acc = "";
-            // give the side chat real memory: the last ~12 turns as history, so
-            // it stops repeating itself and can reference what was already said.
-            const history = (st.sideChat || []).slice(-12).map((m) => ({
-              role: (m.role === "laro" ? "assistant" : "user") as "assistant" | "user",
-              content: m.text,
-            }));
-            for await (const part of veylaroChat(
-              st.settings.engineUrl, st.settings.engineModel,
-              [{ role: "system", content: laroContext(ramGB) + "\n\n" + LARO_SIDE_CHARTER },
-               ...history,
-               { role: "user", content: t }],
-              tierFromModelName(st.settings.engineModel) || st.settings.model, false
-            )) if (part.type === "text") acc += part.chunk;
-            respond(acc || sideChatReply(t));
-          } catch { respond(sideChatReply(t)); }
-        })();
-      } else {
-        setTimeout(() => respond(sideChatReply(t)), 600 + Math.random() * 700);
-      }
+            const m = await detectLiveModel(u);
+            if (m) { url = u; model = m; break; }
+          } catch { /* try next */ }
+        }
+        if (!url) {
+          setReply({
+            text: "I can't reach a local model right now, so I won't fake an answer. Start Veylaro's engine (or launch a model) and I'll think for real — this window is chat + web only.",
+            streaming: false,
+          });
+          return;
+        }
+
+        // Internet: only for clearly current/factual asks, and only what the
+        // privacy filter allows off the machine.
+        let grounding = "";
+        if (st.settings.internet && navigator.onLine && needsWeb(t)) {
+          try {
+            const q = privacySafeSearchQuery(t);
+            if (q) {
+              const results = await webSearch(q);
+              if (results?.length) grounding = `\n\n${GROUNDING_NOTE}\n\n${resultsToContext(q, results)}`;
+            }
+          } catch { /* chat without grounding */ }
+        }
+
+        const active = (stRef.current.sideThreads || []).find((th) => th.id === activeId);
+        const history = (active?.msgs || [])
+          .filter((m) => m.id !== replyId && m.id !== youId && m.text.trim())
+          .slice(-12)
+          .map((m) => ({ role: (m.role === "laro" ? "assistant" : "user") as "assistant" | "user", content: m.text }));
+
+        try {
+          let acc = "";
+          for await (const part of veylaroChat(
+            url, model,
+            [{ role: "system", content: `${laroContext(ramGB)}\n\n${LARO_SIDE_CHARTER}${grounding}` },
+             ...history,
+             { role: "user", content: t }],
+            tierFromModelName(model) || st.settings.model, false,
+          )) {
+            if (part.type === "text") { acc += part.chunk; setReply({ text: acc, streaming: true }); }
+          }
+          setReply({ text: acc.trim() || "The model came back empty — it may be loading or busy. Give it a second and ask again.", streaming: false });
+        } catch {
+          setReply({ text: "Couldn't reach the engine just now — it might be starting up or busy. Try again in a moment.", streaming: false });
+        }
+      })();
     },
 
     previewPlan() {
