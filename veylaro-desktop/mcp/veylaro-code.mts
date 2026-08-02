@@ -168,8 +168,14 @@ async function headlessBuild(args: BuildArgs) {
     if (!resolvedModel) {
       return { ok: false, error: `Endpoint ${endpoint} does not serve Laro ${tier}. Available: ${chosen.models.join(", ")}` };
     }
-  } else if (!chosen.models.includes(resolvedModel)) {
-    return { ok: false, error: `Model "${resolvedModel}" is not served by ${endpoint}. Available: ${chosen.models.join(", ")}` };
+  } else {
+    // Match loosely so an explicit "laro-lite" resolves ollama's "laro-lite:latest".
+    const strip = (s: string) => s.replace(/:latest$/, "");
+    const match = chosen.models.find((m) => m === resolvedModel || strip(m) === strip(resolvedModel));
+    if (!match) {
+      return { ok: false, error: `Model "${resolvedModel}" is not served by ${endpoint}. Available: ${chosen.models.join(", ")}` };
+    }
+    resolvedModel = match; // use the exact served id
   }
 
   // Scope dir: an isolated scratch workspace unless the caller pins one.
