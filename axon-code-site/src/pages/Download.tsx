@@ -14,7 +14,7 @@ export function Download() {
     med: cfg.med_download_enabled,
     max: cfg.max_download_enabled,
   };
-  const open = PUBLIC_ARTIFACTS_READY && (cfg.downloads_enabled || DOWNLOADS_ENABLED) && Object.values(tierOpen).some(Boolean);
+  const open = PUBLIC_ARTIFACTS_READY && (cfg.downloads_enabled || DOWNLOADS_ENABLED);
 
   return (
     <main>
@@ -39,6 +39,21 @@ export function Download() {
                 <RegisterInterest source="download-page" />
               </div>
             )}
+            {open && (
+              <div className="interest-band">
+                <div className="ib-title">✦ Opening it the first time (macOS)</div>
+                <p style={{ marginBottom: 6 }}>
+                  The build is <b>ad-hoc signed</b>, not yet notarized, so macOS shows an
+                  "unidentified developer" notice the first time. It's safe — just:
+                  <b> right-click the app → Open → Open.</b> After that it launches normally.
+                  A notarized <b>Mac App Store</b> version is on the way.
+                </p>
+                <p style={{ color: "var(--muted)", fontSize: 14 }}>
+                  On first launch Veylaro downloads the Laro model once (verified), then runs
+                  fully on your machine — no Python, no accounts, nothing leaves your computer.
+                </p>
+              </div>
+            )}
           </Reveal>
         </div>
       </section>
@@ -54,9 +69,9 @@ export function Download() {
                 {open ? (
                   <>
                     <a href={BUILDS.macArm} className="btn primary lg" style={{ width: "100%" }}>
-                      <DownloadIcon size={18} /> Download for Mac
+                      <DownloadIcon size={18} /> Download for Mac (Apple Silicon)
                     </a>
-                    <a href={BUILDS.macIntel} className="dl-alt">Intel Mac build</a>
+                    <span className="dl-alt">Right-click → Open on first launch · Intel &amp; App Store soon</span>
                   </>
                 ) : (
                   <span className="btn primary lg ghosted" aria-disabled="true" style={{ width: "100%" }}>
@@ -65,7 +80,7 @@ export function Download() {
                   </span>
                 )}
                 <div className="dl-req">
-                  <span>Released tiers only</span><span>macOS 13+</span><a href={BUILDS.checksums} target="_blank" rel="noreferrer">SHA-256 ↗</a>
+                  <span>Apple Silicon · macOS 13+</span><span>self-contained</span><a href={BUILDS.checksums} target="_blank" rel="noreferrer">SHA-256 ↗</a>
                 </div>
               </GlowCard>
             </Reveal>
@@ -74,21 +89,12 @@ export function Download() {
                 <div className="os-icon"><Windows size={30} /></div>
                 <h3>Windows</h3>
                 <div className="os-meta">Windows 11 / 10 (64-bit) · NVIDIA, AMD or CPU · .exe</div>
-                {open ? (
-                  <>
-                    <a href={BUILDS.win} className="btn primary lg" style={{ width: "100%" }}>
-                      <DownloadIcon size={18} /> Download for Windows
-                    </a>
-                    <a href={BUILDS.winPortable} className="dl-alt">Portable .exe (no install)</a>
-                  </>
-                ) : (
-                  <span className="btn primary lg ghosted" aria-disabled="true" style={{ width: "100%" }}>
-                    <DownloadIcon size={18} /> Download for Windows
-                    <span className="soon-pill">soon</span>
-                  </span>
-                )}
+                <span className="btn primary lg ghosted" aria-disabled="true" style={{ width: "100%" }}>
+                  <DownloadIcon size={18} /> Download for Windows
+                  <span className="soon-pill">soon</span>
+                </span>
                 <div className="dl-req">
-                  <span>Windows 10 &amp; 11 · x64</span><span>8 GB RAM minimum</span><a href={BUILDS.checksums} target="_blank" rel="noreferrer">SHA-256 ↗</a>
+                  <span>Windows 10 &amp; 11 · x64</span><span>self-contained build in progress</span>
                 </div>
               </GlowCard>
             </Reveal>

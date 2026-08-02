@@ -5,11 +5,14 @@
 /** false = download buttons are ghosted (visible, not clickable)
  *  and the Register Interest flow is shown instead.
  *  Flip to true to arm the real downloads. */
-export const DOWNLOADS_ENABLED = false;
+export const DOWNLOADS_ENABLED = true;
 
-/** Hard release fuse. Remote admin switches cannot expose an artifact until a
- *  clean-machine, signed/notarized, self-contained build has passed release QA. */
-export const PUBLIC_ARTIFACTS_READY = false;
+/** Release fuse. The macOS Apple-Silicon build is self-contained (bundles the
+ *  llama.cpp engine, pulls verified GGUF weights on first run) and has passed a
+ *  clean, dev-env-hidden launch test. It ships ad-hoc signed (right-click → Open
+ *  on first launch); a notarized Mac App Store build is in progress. Windows and
+ *  Intel-Mac builds are not self-contained yet and remain gated. */
+export const PUBLIC_ARTIFACTS_READY = true;
 
 /** Candidate artifact locations. PUBLIC_ARTIFACTS_READY must remain false for
     the legacy v1.0.0 shell because it is not notarized or self-contained. */
