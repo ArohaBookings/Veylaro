@@ -91,7 +91,7 @@ import { recordMilestone, timelineForPrompt } from "../engine/projectTimeline";
 import { planForMemory, pressureVerdict } from "../engine/memoryGuard";
 import { GROUNDING_NOTE, LARO_SIDE_CHARTER, SOVEREIGN_FORGE_PROMPT, laroContext } from "../engine/charter";
 import { evidenceBudget, EXECUTION_LATTICE_PROMPT } from "../engine/executionLattice";
-import { cleanAssistantText, collapseReason } from "../engine/outputHygiene";
+import { cleanAssistantText, collapseReason, isPresentableNarration } from "../engine/outputHygiene";
 import { extractRepairFiles } from "../engine/repairCandidates";
 import { liteReinforced, canSyntaxCheck, checkInProcess } from "../engine/liteBoost";
 import { ambitionFloor, assessDeliverable, continuationBrief } from "../engine/completionGate";
@@ -99,6 +99,7 @@ import { continuationPressure, stepPolicy, stopReason } from "../engine/stepBudg
 import { enforcementBrief, isProtocolFailure } from "../engine/protocolEnforcer";
 import { breadthBrief, detectRegression, regressionBrief } from "../engine/progressGuard";
 import { findBrokenReferences, referenceGaps, repairReferences } from "../engine/referenceGate";
+import { assessShrink } from "../engine/workPreservation";
 import { synthesizeSemanticRepairs } from "../engine/semanticRepair";
 import { explicitlyRequestsTestEdits, isProtectedTestPath } from "../engine/testIntegrity";
 import { classifyModelCommand } from "../engine/commandPolicy";
@@ -921,6 +922,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // progress. Skip it so Laro can't spin re-saving the same file ("adding a
           // border", "adding padding"…) burning steps, time and RAM for nothing.
           if (old !== null && old.trim() === content.trim()) return false;
+          // WORK PRESERVATION — refuse a rewrite that destroys finished work.
+          // Measured: a build went 278 -> 240 -> 215 lines as the model kept
+          // replacing good files with shorter ones. The old regression guard ran
+          // AFTER the write, so it could only complain about work already gone —
+          // and the model, asked to restore 80 lines it no longer had, produced
+          // another stub. Refusing keeps the full version on disk, so the next
+          // attempt starts from it. `opts.silent` writes are ours (the reference
+          // repair), never the model's, so they bypass this.
+          if (!opts.silent) {
+            const shrink = assessShrink(rel, old, content);
+            if (shrink.destructive) {
+              writeFeedback.push(shrink.brief);
+              appendEvent(sess.id, agentMsg.id, { kind: "step", text: `🛡️ refused to shrink ${rel} (${shrink.beforeLines} → ${shrink.afterLines} lines) — kept your finished work` });
+              return false;
+            }
+          }
           // Lite Syntax Gate (Lite tier only): Gemma-4B sometimes emits code that
           // doesn't parse — an extra ')' in a conditional was the exact failure on
           // the SaaS-auth fixture. Catch it before it's written or run, and hand back
@@ -1592,7 +1609,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                     if (!r.ok && !r.blocked) { failedCmd = { cmd: ev.cmd, out: r.out.slice(0, 400) }; commandFailures++; }
                   }
                   else if (ev.t === "done") { requestedDone = true; }
-                  else if (ev.t === "narrate") { stepLine(ev.text); }   // persist each line
+                  // Code that leaked out of a file block is protocol drift, not
+                  // commentary. The file rows already report what was written; raw
+                  // source must never appear in the conversation.
+                  else if (ev.t === "narrate") { if (isPresentableNarration(ev.text)) stepLine(ev.text); }
                 }
                 const w = parser.writing;
                 if (w) setStreamText(`✍️ Writing ${w}…`);

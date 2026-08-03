@@ -213,13 +213,29 @@ function Viewport() {
         }
       } catch { /* webview not ready */ }
     };
-    const onStart = () => { consoleErrors.current = []; setFunctional(null); };
+    // A webview whose page failed to load still fires dom-ready (for the error
+    // page), and auditing it calls executeJavaScript on a guest view that cannot
+    // run scripts. That surfaces in the MAIN process as
+    //   "Error occurred in handler for 'GUEST_VIEW_MANAGER_CALL'"
+    // and was followed by the GPU process dying — the app crash the user hit
+    // after Laro pointed the Viewport at http://localhost:3000 with no dev
+    // server running (ERR_CONNECTION_REFUSED). Never audit a page that isn't there.
+    const loadFailed = { current: false };
+    const onFail = (e: any) => {
+      // -3 is ABORTED (a normal navigation cancel), not a real failure.
+      if (Number(e?.errorCode) === -3) return;
+      loadFailed.current = true;
+      setFunctional(null);
+      setTaste(null);
+    };
+    const onStart = () => { consoleErrors.current = []; loadFailed.current = false; setFunctional(null); };
     const onConsole = (event: any) => {
       const level = Number(event?.level ?? 0);
       if (level >= 3 && event?.message) consoleErrors.current = [...consoleErrors.current, String(event.message).slice(0, 160)].slice(-6);
     };
-    const onReady = () => setTimeout(() => void audit(), 500);
+    const onReady = () => setTimeout(() => { if (!loadFailed.current) void audit(); }, 500);
     wv.addEventListener("did-start-loading", onStart);
+    wv.addEventListener("did-fail-load", onFail);
     wv.addEventListener("console-message", onConsole);
     wv.addEventListener("dom-ready", onReady);
     wv.addEventListener("did-navigate-in-page", onReady);
@@ -227,6 +243,7 @@ function Viewport() {
       alive = false;
       try {
         wv.removeEventListener("did-start-loading", onStart);
+      wv.removeEventListener("did-fail-load", onFail);
         wv.removeEventListener("console-message", onConsole);
         wv.removeEventListener("dom-ready", onReady);
         wv.removeEventListener("did-navigate-in-page", onReady);
