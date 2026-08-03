@@ -192,6 +192,9 @@ interface Persisted {
 }
 
 const DEFAULT_SETTINGS: Settings = {
+  // Resolved from real RAM on first run (see hydrate). "lite" is only the value
+  // before we have measured the machine — shipping it as the actual default
+  // meant a 16 GB Mac ran the 4B model unless the user went and changed it.
   model: "lite",
   permMode: "edits",
   lang: "both",
@@ -243,6 +246,12 @@ function hydrate(p: Persisted): Persisted {
     p.usage = mirror;
   }
   p.settings = { ...DEFAULT_SETTINGS, ...p.settings };
+  // If the user has not pinned a tier, follow the hardware rather than the
+  // conservative default. recommendModel is deliberate: 16 GB -> Med, 24 -> Max.
+  if (p.settings.autoPickModel !== false) {
+    const ram = Math.round((navigator as any).deviceMemory ? (navigator as any).deviceMemory : 16);
+    p.settings.model = recommendModel(ram);
+  }
   // Veylaro runs its OWN engine. Any profile still pointing at a third-party
   // runtime's stock address is migrated to the app-owned engine — there is no
   // external runtime in the product any more, so leaving it there would just
@@ -508,10 +517,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               ...p.settings,
               engine: "veylaro",
               engineModel: found.replace(/:latest$/, ""),
-              // The checkpoint that actually answered wins over a RAM-based
-              // recommendation. Otherwise a 16 GB machine can display Med
-              // while every token is still coming from Lite.
-              ...(detectedTier ? { model: detectedTier, autoPickModel: false } : {}),
+              // Report the tier that actually answered, but NEVER pin it and never
+              // switch auto-pick off. This line used to do both, so if a Lite
+              // engine happened to be running at startup — a leftover process, a
+              // previous session — the app pinned Lite permanently and auto-pick
+              // could never correct it. A 16 GB Mac that runs Med comfortably was
+              // then stuck on the 4B model forever, and every judgement about
+              // "the output" was really a judgement about Lite.
+              //
+              // A transient process is not a decision. Only the user pinning a
+              // tier in the picker sets autoPickModel: false.
+              ...(detectedTier && !p.settings.autoPickModel ? { model: detectedTier } : {}),
             },
           };
         });
@@ -1675,7 +1691,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   else if (ev.t === "narrate") { if (isPresentableNarration(ev.text)) stepLine(ev.text); }
                 }
                 const w = parser.writing;
-                if (w) setStreamText(`✍️ Writing ${w}…`);
+                if (w) setStreamText(`Writing ${w}…`);
               }
               // close out any trailing block, then salvage stray fenced code
               for (const ev of parser.flush()) {
