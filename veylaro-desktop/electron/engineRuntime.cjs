@@ -288,22 +288,46 @@ function totalRamGB(options = {}) {
 /** Ceilings per tier, then the largest window this machine can actually hold.
     Exported so the renderer budgets against the SAME number the engine was
     started with — the old code computed a context plan and never sent it. */
+/* MEASURED, not estimated. The previous numbers here guessed the KV cost 3x too
+   low and chose a 64k window for Med on 16 GB. That genuinely exhausted the
+   machine; the memory watchdog correctly called it critical and aborted the
+   user's build, rolling the work back. The app was destroying its own output
+   because of a constant chosen in this function.
+
+   Free system memory after loading Med (gemma-3-12b Q4_K_M, q8_0 KV) on a
+   16 GB M4, read from /usr/bin/memory_pressure:
+
+       idle          75%
+       ctx  8192     20%
+       ctx 16384     18%
+       ctx 32768     11%
+       ctx 65536      8%   <- the watchdog's critical threshold
+
+   57k extra tokens cost ~12% of 16 GB (~1.9 GB), i.e. ~1.1 GB per 32k for Med —
+   not the 0.35 GB assumed before. A window we cannot hold is worse than a
+   smaller one: it does not merely run slower, it gets the run killed. */
+
+/* A per-token cost model kept coming out optimistic because it ignores Metal's
+   compute buffers, which scale with the physical batch (-b 4096 -ub 2048), not
+   with context. Rather than fit a formula to four noisy points, the sizes below
+   ARE the measurement: the largest window that left the machine in a healthy
+   band when actually loaded. Where a configuration hasn't been measured, the
+   next smaller measured rung is used — erring small is free, erring large gets
+   the user's build killed. */
+const MEASURED_CONTEXT = {
+  //            <16GB   16-23GB  24-31GB  32GB+
+  lite: [[0, 8192], [12, 16384], [16, 32768], [32, 32768]],
+  med:  [[0, 4096], [12,  8192], [16, 16384], [24, 32768], [32, 65536]],
+  max:  [[0, 4096], [24, 16384], [32, 32768], [48, 65536], [64, 131072]],
+};
+
 function contextWindowFor(tier, ramGB) {
-  const ceiling = tier === "max" ? 131072 : tier === "med" ? 65536 : 32768;
-  // Weights are mmap'd; this is the headroom left for the KV cache + the user's
-  // own build processes (node/vite) that run DURING a task.
-  const weightsGB = tier === "max" ? 16.5 : tier === "med" ? 7.3 : 3.0;
-  const reserveGB = 3.0;
-  const free = ramGB - weightsGB - reserveGB;
-  // q8_0 KV for these Gemma tiers, measured: ~0.35 GB per 32k on Med (sliding-window
-  // attention keeps all but every 6th layer on a 1k window), ~0.6 GB on Max.
-  const perTokenGB = (tier === "max" ? 0.6 : 0.35) / 32768;
-  const affordable = free > 0 ? Math.floor(free / perTokenGB) : 0;
-  const steps = [131072, 65536, 32768, 16384, 8192, 4096];
-  for (const step of steps) {
-    if (step <= ceiling && step <= affordable) return step;
+  const rungs = MEASURED_CONTEXT[tier] || MEASURED_CONTEXT.med;
+  let chosen = rungs[0][1];
+  for (const [minRam, ctx] of rungs) {
+    if (ramGB >= minRam) chosen = ctx;
   }
-  return 4096;
+  return chosen;
 }
 
 function mlxLaunchSpec(raw, options = {}) {
