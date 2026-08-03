@@ -99,6 +99,7 @@ import { continuationPressure, stepPolicy, stopReason } from "../engine/stepBudg
 import { enforcementBrief, isProtocolFailure } from "../engine/protocolEnforcer";
 import { breadthBrief, detectRegression, regressionBrief } from "../engine/progressGuard";
 import { findBrokenReferences, referenceGaps, repairReferences } from "../engine/referenceGate";
+import { designBriefFor, designGaps, gradeDesign, wantsVisualDesign } from "../engine/designSystem";
 import { assessShrink } from "../engine/workPreservation";
 import { synthesizeSemanticRepairs } from "../engine/semanticRepair";
 import { explicitlyRequestsTestEdits, isProtectedTestPath } from "../engine/testIntegrity";
@@ -1319,6 +1320,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 verification: verificationCommands(verificationInput),
               }),
             });
+            // Visual work gets a concrete spec. "Make it look good" is a wish;
+            // exact spacing steps, a type scale and the gradient recipe are an
+            // instruction. Measured: without this Med produces <h1>NOVA</h1> on a
+            // default body — structurally right, visually nothing.
+            const designBrief = designBriefFor(text);
+            if (designBrief) sys.push({ role: "system", content: designBrief });
             const convo: ChatMsg[] = [...sys, { role: "user", content: `[project folder: ${sess.scope}]\n${text}` }];
             try {
               const root = await window.veylaro!.listDir?.(scopeBase, scopedCtx);
@@ -1777,6 +1784,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 stepLine(`that step made the project smaller (${regression.linesBefore} → ${regression.linesAfter} lines) — asking for it back`);
                 convo.push({ role: "user", content: regressionBrief(regression) });
                 continue;
+              }
+
+              // DESIGN GRADE — the same spec, checked against what was written.
+              // Every check is a concrete decision, not a taste judgement.
+              if (wantsVisualDesign(text) && deliverable.size && step < maxSteps) {
+                const styling = [...deliverable]
+                  .filter(([p]) => /\.(?:css|s[ac]ss|html?|[cm]?[jt]sx)$/i.test(p))
+                  .map(([, c]) => c).join("\n");
+                if (styling.trim()) {
+                  const design = gradeDesign(styling);
+                  if (design.score < 60) {
+                    stepLine(`Styling scores ${design.score}/100 against the visual bar — missing ${design.missing.slice(0, 3).join(", ")}. Sending it back.`);
+                    convo.push({ role: "user", content: designGaps(design).join("\n") });
+                    continue;
+                  }
+                }
               }
 
               if (verdict && !verdict.complete) {
