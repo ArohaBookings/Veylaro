@@ -94,9 +94,10 @@ import { evidenceBudget, EXECUTION_LATTICE_PROMPT } from "../engine/executionLat
 import { cleanAssistantText, collapseReason } from "../engine/outputHygiene";
 import { extractRepairFiles } from "../engine/repairCandidates";
 import { liteReinforced, canSyntaxCheck, checkInProcess } from "../engine/liteBoost";
-import { assessDeliverable, continuationBrief } from "../engine/completionGate";
+import { ambitionFloor, assessDeliverable, continuationBrief } from "../engine/completionGate";
 import { continuationPressure, stepPolicy, stopReason } from "../engine/stepBudget";
 import { enforcementBrief, isProtocolFailure } from "../engine/protocolEnforcer";
+import { breadthBrief, detectRegression, regressionBrief } from "../engine/progressGuard";
 import { synthesizeSemanticRepairs } from "../engine/semanticRepair";
 import { explicitlyRequestsTestEdits, isProtectedTestPath } from "../engine/testIntegrity";
 import { classifyModelCommand } from "../engine/commandPolicy";
@@ -1505,6 +1506,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               if (stop === "runaway") { stepLine(`stopping at the ${stepPlan.hard}-step safety limit`); break; }
               if (stop === "aborted") break;
               step++;
+              // Snapshot so a step that SHRINKS the project is caught by evidence
+              // rather than hope. Measured: a run oscillated 242 -> 173 -> 95 lines
+              // across three steps, silently destroying finished work.
+              const beforeStep = new Map(deliverable);
               const parser = new StreamParser();
               let raw = "";
               let wroteThisStep = 0;
@@ -1620,9 +1625,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 continue;
               }
 
+              // Going backwards is its own failure mode and needs its own answer:
+              // "keep building" is what produced the shrink in the first place.
+              const regression = detectRegression(beforeStep, deliverable);
+              if (regression.regressed) {
+                stepLine(`that step made the project smaller (${regression.linesBefore} → ${regression.linesAfter} lines) — asking for it back`);
+                convo.push({ role: "user", content: regressionBrief(regression) });
+                continue;
+              }
+
               if (verdict && !verdict.complete) {
                 if (requestedDone) stepLine(`not done yet — ${verdict.missing.length} gap${verdict.missing.length === 1 ? "" : "s"} left, keeping going`);
-                convo.push({ role: "user", content: continuationBrief(verdict) });
+                // When the shortfall is BREADTH, name a file that does not exist
+                // yet. A model told "keep building" edits what is in front of it;
+                // a model told "write bookings.js" writes bookings.js.
+                const wantsMoreFiles = /across \d+\+ files|several real screens|product surface/i.test(verdict.missing.join(" "));
+                const breadth = wantsMoreFiles
+                  ? breadthBrief(text, [...deliverable.keys()], ambitionFloor(text).files)
+                  : null;
+                convo.push({ role: "user", content: breadth ?? continuationBrief(verdict) });
                 continue;
               }
               if (requestedDone) { done = true; break; }
