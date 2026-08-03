@@ -268,20 +268,38 @@ function stopOwnedEngine() {
 async function readMemoryState() {
   const totalGB = os.totalmem() / (1024 ** 3);
   const freeGB = os.freemem() / (1024 ** 3);
-  let pressureFreePct = totalGB > 0 ? (freeGB / totalGB) * 100 : 0;
+  const rawFreePct = totalGB > 0 ? (freeGB / totalGB) * 100 : 0;
+
+  // THE NUMBER THAT WAS KILLING RUNS.
+  //
+  // On macOS os.freemem() is meaningless as a health signal: the OS keeps
+  // useful memory in inactive/compressed caches, so a perfectly healthy 16 GB
+  // Mac reports ~0.7 GB free (4.3%). memory_pressure is the authoritative
+  // reclaimability signal, and the renderer's guard treats <=8% as critical.
+  //
+  // The old code fell back to rawFreePct whenever memory_pressure failed — and
+  // it fails precisely when the machine is BUSY, which is exactly when a build
+  // is running. So a healthy machine mid-generation reported 4.3% "pressure",
+  // the watchdog called it critical, and the run was aborted and rolled back
+  // with "run aborted by user". Measured live: pressureFreePct 79, freePct 4.3.
+  //
+  // An unreadable signal is UNKNOWN, not critical. Destroying the user's work
+  // on a number we failed to obtain is never correct, so it reports null and
+  // the guard leaves the run alone.
+  let pressureFreePct = rawFreePct;
   if (process.platform === "darwin") {
     pressureFreePct = await new Promise((resolve) => {
-      execFile("/usr/bin/memory_pressure", ["-Q"], { timeout: 4000, maxBuffer: 128 * 1024 }, (error, stdout) => {
-        if (error) return resolve(pressureFreePct);
+      execFile("/usr/bin/memory_pressure", ["-Q"], { timeout: 10000, maxBuffer: 128 * 1024 }, (error, stdout) => {
+        if (error) return resolve(null);
         const match = String(stdout).match(/System-wide memory free percentage:\s*([\d.]+)%/i);
-        resolve(match ? Number(match[1]) : pressureFreePct);
+        resolve(match ? Number(match[1]) : null);
       });
     });
   }
   return {
     totalGB,
     freeGB,
-    freePct: totalGB > 0 ? (freeGB / totalGB) * 100 : 0,
+    freePct: rawFreePct,
     pressureFreePct,
   };
 }

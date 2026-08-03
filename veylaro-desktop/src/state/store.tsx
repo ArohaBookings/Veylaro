@@ -385,10 +385,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // alone often reports <0.6 GB on a healthy machine and used to unload Laro
         // every 30 seconds. memory_pressure is the authoritative reclaimability
         // signal on Mac; raw free bytes remain the fallback elsewhere.
-        critical = !!mem && pressureVerdict(
-          Number.isFinite(mem.freeGB) ? mem.freeGB : null,
-          typeof mem.pressureFreePct === "number" ? mem.pressureFreePct : mem.freePct,
-        ) === "critical";
+        // NEVER fall back to raw free bytes on macOS. os.freemem() reads ~4% on a
+        // healthy Mac because the OS caches aggressively, and that number used to
+        // stand in whenever memory_pressure was unreadable — which happens exactly
+        // when the machine is busy running a build. The result was healthy machines
+        // aborting their own runs. An unreadable pressure signal is UNKNOWN, and
+        // unknown must never destroy work in progress.
+        const pressurePct = typeof mem?.pressureFreePct === "number" ? mem.pressureFreePct : null;
+        const freeGB = mem && Number.isFinite(mem.freeGB) ? mem.freeGB : null;
+        const isMac = navigator.platform?.toLowerCase().includes("mac");
+        critical = !!mem
+          && (pressurePct !== null || !isMac)
+          && pressureVerdict(isMac ? null : freeGB, pressurePct) === "critical";
       } catch { /* best effort */ }
       // ONE BAD READING IS NOT A CRISIS.
       //

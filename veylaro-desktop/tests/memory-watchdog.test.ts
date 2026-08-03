@@ -51,3 +51,29 @@ test("a run is still aborted when memory is genuinely, persistently gone", () =>
   assert.match(abortBlock, /abortRef\.current\?\.abort\(\)/);
   assert.match(abortBlock, /engineStop/);
 });
+
+test("an unreadable pressure signal is UNKNOWN, never critical", () => {
+  // THE bug that aborted real runs. main.cjs used to fall back to raw free bytes
+  // when /usr/bin/memory_pressure failed — and it fails precisely when the machine
+  // is busy, i.e. mid-build. Measured live on a healthy 16 GB Mac while generating:
+  //     pressureFreePct: 79   (authoritative -> fine)
+  //     freePct:          4.3 (raw free bytes -> "critical")
+  // The fallback made the app abort its own work and report "run aborted by user".
+  const main = fs.readFileSync(path.join(root, "electron", "main.cjs"), "utf8");
+  assert.match(main, /if \(error\) return resolve\(null\);/, "an unreadable signal must report null, not raw free bytes");
+  assert.doesNotMatch(main, /if \(error\) return resolve\(pressureFreePct\);/, "the raw-free-bytes fallback must be gone");
+
+  // And the renderer must not substitute freePct for a missing pressure reading.
+  assert.doesNotMatch(
+    store,
+    /typeof mem\.pressureFreePct === "number" \? mem\.pressureFreePct : mem\.freePct/,
+    "the renderer must not fall back to raw free bytes either",
+  );
+  assert.match(store, /pressurePct !== null \|\| !isMac/, "unknown pressure on macOS must not be treated as critical");
+});
+
+test("raw macOS free-bytes readings would have been fatal — proving why the fallback was wrong", () => {
+  // A healthy Mac genuinely reports these numbers.
+  assert.equal(pressureVerdict(null, 4.3), "critical", "raw free% on a healthy Mac looks critical");
+  assert.equal(pressureVerdict(null, 79), "ok", "the authoritative signal says the same machine is fine");
+});
