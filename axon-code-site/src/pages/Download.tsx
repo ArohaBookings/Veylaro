@@ -122,11 +122,11 @@ export function Download() {
           </Reveal>
           <div className="tier-cards">
             {[
-              { id: "lite" as const, n: "Laro Lite", p: "4B", d: "3.6 GB", r: "8 GB minimum · 8 GB recommended", i: <Gauge size={22} />,
+              { id: "lite" as const, n: "Laro Lite", p: "4B", d: "2.8 GB", r: "8 GB minimum · 8 GB recommended", i: <Gauge size={22} />,
                 b: "Runs on almost anything — old laptops, cheap Windows machines, a Pi with patience. Same agent, feather footprint, near-instant replies." },
-              { id: "med" as const, n: "Laro Med", p: "12B", d: "7.6 GB", r: "12 GB minimum · 16 GB recommended", i: <Sparkle size={22} />, feat: true,
+              { id: "med" as const, n: "Laro Med", p: "12B", d: "6.8 GB", r: "12 GB minimum · 16 GB recommended", i: <Sparkle size={22} />, feat: true,
                 b: "The one we measured hardest and the one most people should run. Best balance of smart and fast on an ordinary laptop." },
-              { id: "max" as const, n: "Laro Max", p: "24B", d: "14 GB", r: "24 GB minimum · 32 GB recommended", i: <Bolt size={22} />,
+              { id: "max" as const, n: "Laro Max", p: "27B", d: "15.4 GB", r: "24 GB minimum · 32 GB recommended", i: <Bolt size={22} />,
                 b: "Everything we know how to give it — the deepest reasoning, the longest context. For workstations that can feed it." },
             ].map((m, i) => (
               <Reveal key={m.n} delay={i * 110}>

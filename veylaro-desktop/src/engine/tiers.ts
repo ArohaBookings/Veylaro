@@ -38,6 +38,11 @@ export interface TierSystems {
   subAgentLanes: number;
 }
 
+/* paramsB / diskGB MUST match the GGUF actually pinned in
+   electron/ggufCatalog.cjs — these numbers are shown on the website and in the
+   app's model picker, so a mismatch is a claim about a file the user then
+   downloads and finds is a different size. Max was advertised as 24B / 14 GB
+   while shipping gemma-3-27b at 15.4 GiB. */
 export interface TierProfile {
   id: CapabilityTier;
   name: string;
@@ -69,7 +74,7 @@ export const SYSTEM_TIERS: TierProfile[] = [
     minRamGB: 8,
     recommendedRamGB: 8,
     paramsB: 4,
-    diskGB: 3.6,
+    diskGB: 2.8,
     contextTokens: 16384,
     modelTag: "laro-lite",
     // Gemma 4B (E2B). Temperature is > 0 on purpose: the Lite tier leans on
@@ -94,7 +99,7 @@ export const SYSTEM_TIERS: TierProfile[] = [
     minRamGB: 12,
     recommendedRamGB: 16,
     paramsB: 12,
-    diskGB: 7.6,
+    diskGB: 6.8,
     contextTokens: 16384,
     modelTag: "laro-med",
     runtime: { numPredict: 2048, numCtx: 16384, keepAlive: "20m", temperature: 0.1 },
@@ -114,8 +119,8 @@ export const SYSTEM_TIERS: TierProfile[] = [
     tagline: "Everything we know how to give it. For big machines.",
     minRamGB: 24,
     recommendedRamGB: 32,
-    paramsB: 24,
-    diskGB: 14,
+    paramsB: 27,
+    diskGB: 15.4,
     contextTokens: 32768,
     modelTag: "laro-max",
     runtime: { numPredict: 3072, numCtx: 32768, keepAlive: "20m", temperature: 0.1 },

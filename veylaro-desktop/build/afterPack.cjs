@@ -23,6 +23,32 @@ const path = require("path");
 const { selfContainEngineDir } = require("./bundleEngineDeps.cjs");
 const fs = require("node:fs");
 
+/* A build for a platform we have no engine binary for produces an app that
+ * installs cleanly and can never answer a single message. That exact artifact
+ * was live on the public release page for Windows and Intel macOS: the whole
+ * runtime-release tree only ever contained darwin-arm64, so those two downloads
+ * shipped with NO engine at all. Nothing caught it, because nothing looked.
+ *
+ * This looks. A target with no engine for its own platform+arch is not a build,
+ * it is a trap, and the packager now refuses to make one. */
+function assertEngineForTarget(appOutDir, appPath, platform, arch) {
+  const isMac = platform === "darwin";
+  const root = isMac
+    ? path.join(appPath, "Contents", "Resources", "runtime-release")
+    : path.join(appOutDir, "resources", "runtime-release");
+  const wanted = `${platform}-${arch}`;
+  const binary = platform === "win32" ? "llama-server.exe" : "llama-server";
+  const enginePath = path.join(root, wanted, binary);
+  if (!fs.existsSync(enginePath)) {
+    throw new Error(
+      `No bundled engine for ${wanted}. The packaged app would install and then be unable to ` +
+      `answer anything, because it has no inference engine at all.\n` +
+      `Expected: runtime-release/${wanted}/${binary}\n` +
+      `Build llama.cpp for ${wanted} and place it there, or do not ship this target.`,
+    );
+  }
+}
+
 function makeEnginePortable(appPath) {
   const root = path.join(appPath, "Contents", "Resources", "runtime-release");
   let subdirs = [];
@@ -44,9 +70,15 @@ function makeEnginePortable(appPath) {
 }
 
 exports.default = async function afterPack(context) {
-  if (context.electronPlatformName !== "darwin") return;
+  const platform = context.electronPlatformName;
+  const arch = context.arch === 1 ? "x64" : context.arch === 3 ? "arm64" : String(context.arch);
   const appName = `${context.packager.appInfo.productFilename}.app`;
   const appPath = path.join(context.appOutDir, appName);
+
+  // EVERY platform, before anything else. A build with no engine is a trap.
+  assertEngineForTarget(context.appOutDir, appPath, platform, arch);
+
+  if (platform !== "darwin") return;
 
   // ALWAYS — this is the difference between a working download and a dead engine.
   const { problems = [] } = makeEnginePortable(appPath);
