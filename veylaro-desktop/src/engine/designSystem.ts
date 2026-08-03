@@ -41,10 +41,13 @@ export function wantsVisualDesign(request: string): boolean {
    monday.com has no hero. A dashboard is dense, not spacious; its hierarchy
    comes from surfaces and density, not from an 84px headline.
    The brief has to know what KIND of thing it is briefing. */
-export type ArtifactKind = "landing" | "dashboard" | "generic";
+export type ArtifactKind = "landing" | "dashboard" | "game" | "generic";
 
 export function detectArtifactKind(request: string): ArtifactKind {
   const r = request.toLowerCase();
+  if (/\b(game|minecraft|voxel|platformer|roguelike|shooter|rpg|puzzle game|arcade|tetris|snake|pong|breakout|canvas game|physics|sprite|game ?loop)\b/.test(r)) {
+    return "game";
+  }
   if (/\b(dashboard|admin|console|panel|board|kanban|crm|erp|analytics|monday|jira|linear|notion|workspace|inbox|table view|back ?office)\b/.test(r)) {
     return "dashboard";
   }
@@ -53,6 +56,33 @@ export function detectArtifactKind(request: string): ArtifactKind {
   }
   return "generic";
 }
+
+const GAME_BRIEF = `THIS IS A GAME — it has to be PLAYABLE, not a picture of a game.
+
+A game is judged on whether someone can actually play it. A styled page with a "Start" button that does nothing is a total failure however good it looks.
+
+THE LOOP — this is the whole thing
+- A real loop: requestAnimationFrame, with delta time so speed does not depend on frame rate.
+- Explicit state: a single state object holding everything mutable. No globals scattered through the file.
+- Update and render are SEPARATE functions. update(dt) changes state, render() draws it. Never mix them.
+- Input handled by event listeners writing into a keys/pointer map that update() reads — never gameplay logic inside the listener.
+
+MUST ACTUALLY WORK
+- The player can move/act from the first frame, with no setup step.
+- Collision or interaction rules that actually fire and change state.
+- A win or lose condition that is reachable, and a way to restart without reloading the page.
+- Score or progress visible on screen and updating live.
+
+CANVAS
+- Size the canvas to the device pixel ratio so it is not blurry.
+- Draw with shapes and gradients you generate. Never reference a sprite sheet, texture or audio file you have not created.
+- 60fps target: no per-frame allocation in the hot path, no DOM writes inside the loop except one score element.
+
+FEEL
+- Dark background, high-contrast player, readable HUD in a monospace or system stack at 13-15px.
+- Instant feedback on every input: a flash, a particle, a shake, a sound made with the WebAudio oscillator. Something.
+
+Before you finish: open it, play it for ten seconds, and confirm you can win AND lose. If you cannot, it is not done.`;
 
 const DASHBOARD_BRIEF = `VISUAL BAR — this is a PRODUCT SCREEN, not a marketing page.
 
@@ -223,8 +253,13 @@ Before you finish, look at what you wrote and ask: does this look like a product
  * lecture about radial gradients.
  */
 export function designBriefFor(request: string): string {
-  if (!wantsVisualDesign(request)) return "";
-  return detectArtifactKind(request) === "dashboard" ? DASHBOARD_BRIEF : DESIGN_BRIEF;
+  const kind = detectArtifactKind(request);
+  // A game is visual work even when the word "ui" never appears — "build
+  // minecraft" is the whole request. Kind detection is the authority; the
+  // generic visual check is only the fallback for everything else.
+  if (kind === "game") return GAME_BRIEF;
+  if (kind === "dashboard") return DASHBOARD_BRIEF;
+  return wantsVisualDesign(request) ? DESIGN_BRIEF : "";
 }
 
 /* ---- grading -------------------------------------------------------------
