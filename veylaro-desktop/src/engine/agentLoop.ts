@@ -138,16 +138,43 @@ export class StreamParser {
 
   flush(): ParseEvent[] {
     const out: ParseEvent[] = [];
-    // No @@END means no file event. The caller may retry with more tokens, but
-    // must never write a partial replacement to disk.
+
+    // THE RESIDUAL LINE IS A REAL LINE.
+    //
+    // push() only processes text up to a newline; anything after the last \n
+    // stays in `buf`. A model that ends its reply exactly at "@@END" — with no
+    // trailing newline, which is the most natural way to finish — left that
+    // terminator sitting in the buffer, unprocessed. flush() then saw inFile
+    // still true, called it an abandoned block, and threw the ENTIRE file away.
+    //
+    // Measured on Med, one build, three steps in a row: a complete stylesheet
+    // and a complete app.js, both perfectly formed, both silently discarded.
+    // The run then "stalled" having written 51 lines. This one missing newline
+    // is a large part of why output looked impossibly thin.
+    //
+    // So: process the tail as the final line before judging anything.
+    if (this.buf.length) {
+      const tail = this.buf;
+      this.buf = "";
+      this.line(tail, out);
+    }
+
+    // Only NOW is an unterminated block genuinely unterminated. Those are still
+    // discarded on purpose: replacing a real file with token-truncated output is
+    // never a safe recovery mode.
     const abandonedFile = this.inFile;
     this.inFile = false;
     this.filePath = "";
     this.fileLines = [];
-    // whatever's left in buf is a final partial line of narration
-    if (this.buf.trim() && !abandonedFile) this.narration.push(this.buf);
-    this.buf = "";
+    if (abandonedFile) this.narration.push("(an unterminated file block was discarded)");
     return out;
+  }
+
+  /** True when the stream ended inside a file block — i.e. the reply was cut off
+      mid-file (usually the reply token budget). The caller can ask for the rest
+      instead of treating the step as if the model simply refused to work. */
+  get truncatedMidFile(): boolean {
+    return this.inFile;
   }
 }
 
