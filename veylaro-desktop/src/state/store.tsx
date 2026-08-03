@@ -372,6 +372,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Smart Load lifecycle: while the app is merely open, no model is resident.
   // Activity refreshes the engine's 20-minute window. Once idle, or once the OS
   // reports critical free memory, the app-owned process is released.
+  const criticalStreak = useRef(0);
   useEffect(() => {
     if (!window.veylaro?.engineStop) return;
     const tick = async () => {
@@ -389,14 +390,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           typeof mem.pressureFreePct === "number" ? mem.pressureFreePct : mem.freePct,
         ) === "critical";
       } catch { /* best effort */ }
+      // ONE BAD READING IS NOT A CRISIS.
+      //
+      // Loading a 7.3 GB model legitimately drives free memory down for a few
+      // seconds. The watchdog used to abort the run on the FIRST critical
+      // reading, which meant that on a 16 GB Mac — the exact machine Med is
+      // recommended for — a build could be killed by its own model loading.
+      // Observed twice in a row on the packaged app: the run died seconds after
+      // starting, rolled back its work, and reported "run aborted by user"
+      // when the user had done nothing.
+      //
+      // Two consecutive readings 30s apart means memory is genuinely gone, not
+      // that we are mid-load. The engine is still released promptly when idle.
       if (critical && running) {
-        // Free the largest resident allocation immediately. Aborting the run
-        // sends execution through its transactional rollback before finishRun.
+        criticalStreak.current += 1;
+        if (criticalStreak.current < 2) return;
         markModelCold();
+        criticalStreak.current = 0;
         abortRef.current?.abort();
         await window.veylaro?.engineStop?.();
         return;
       }
+      criticalStreak.current = 0;
       if ((expired || critical) && !running) {
         markModelCold();
         await window.veylaro?.engineStop?.();
