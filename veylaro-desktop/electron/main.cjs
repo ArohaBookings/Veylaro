@@ -78,14 +78,57 @@ async function verifyEngine(discovery, timeoutMs = 45000) {
   }
 }
 
+/* Veylaro must own its engine. Anything else already sitting on the configured
+   port — a stale llama-server, another tool, a previous crashed run — used to be
+   ADOPTED: the app talked to it, the probe failed or timed out, and it reported
+   "A local model server is present but unusable" and gave up. One stray process
+   permanently bricked the product, with no way for the user to recover from
+   inside the app. Observed exactly that in the wild.
+   Now: a foreign endpoint we cannot use is stepped around, not surrendered to. */
+const net = require("net");
+
+function portIsFree(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => server.close(() => resolve(true)));
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+/** The configured port if we can have it, else the next free one nearby. */
+async function usablePort(raw) {
+  const base = engineBase(raw);
+  const parsed = new URL(base);
+  const first = Number(parsed.port || 8080);
+  for (let port = first; port < first + 12; port++) {
+    if (await portIsFree(port)) return port;
+  }
+  return first;
+}
+
+function withPort(raw, port) {
+  const parsed = new URL(engineBase(raw));
+  return `${parsed.protocol}//${parsed.hostname}:${port}`;
+}
+
 async function ensureEngine(raw, preferredModel = "", sku = "lite") {
   const requested = modelTierConfig(sku);
   let existing = await discoverEngine(raw, preferredModel, requested.id);
   if (existing.ok) {
     const verified = await verifyEngine(existing, 45000);
-    return verified.ok
-      ? { ...verified, started: false }
-      : { ...verified, error: `A local model server is present but unusable: ${verified.error}` };
+    if (verified.ok) return { ...verified, started: false };
+    // Present but unusable. If it is OURS, that is a real failure. If it belongs
+    // to something else, it is not our problem to inherit — step around it.
+    if (engineProcess && engineStartedByApp) {
+      return { ...verified, error: `Laro's engine is running but not answering: ${verified.error}` };
+    }
+    const free = await usablePort(raw);
+    if (free !== Number(new URL(engineBase(raw)).port || 8080)) {
+      engineLog = `Port ${new URL(engineBase(raw)).port || 8080} is held by another program; starting Laro's own engine on ${free}.\n`;
+      raw = withPort(raw, free);
+      existing = { ok: false, url: engineBase(raw) };
+    }
   }
 
   // A tier switch must never relabel the currently resident model. Stop only
@@ -102,11 +145,18 @@ async function ensureEngine(raw, preferredModel = "", sku = "lite") {
   }
 
   if (existing.availableModels?.length && (!engineProcess || !engineStartedByApp)) {
-    return {
-      ok: false,
-      url: engineBase(raw),
-      error: `The running endpoint does not provide Laro ${requested.id}. Available: ${existing.availableModels.join(", ")}.`,
-    };
+    // Someone else's model server. Don't demand the user shut it down — take a
+    // different port and run our own alongside it.
+    const free = await usablePort(raw);
+    if (free !== Number(new URL(engineBase(raw)).port || 8080)) {
+      raw = withPort(raw, free);
+    } else {
+      return {
+        ok: false,
+        url: engineBase(raw),
+        error: `The running endpoint does not provide Laro ${requested.id}. Available: ${existing.availableModels.join(", ")}.`,
+      };
+    }
   }
 
   if (engineProcess && !engineProcess.killed) {

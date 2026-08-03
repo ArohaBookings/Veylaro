@@ -1098,11 +1098,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             if (!wasWarm) setStreamText("Loading Laro into memory — this happens once, then replies stay warm…");
             const ready = await ensureLocalEngine(settings.engineUrl, settings.engineModel, runSku);
             if (!ready.ok) throw new Error(ready.error || "the local engine did not start");
+            // The engine may have moved: if another program held the configured
+            // port, main starts Laro's own engine on a free one and reports where.
+            // Every later call in this run must follow it, or we'd keep talking to
+            // the foreign process we just stepped around.
+            const engineUrl = ready.url || settings.engineUrl;
+            if (engineUrl !== settings.engineUrl) {
+              setSt((prev) => ({ ...prev, settings: { ...prev.settings, engineUrl } }));
+            }
             // An MLX endpoint only becomes reachable after the checkpoint is loaded.
             // Mark it warm now, not after token one, so this same request never shows
             // a second fake loading phase and later turns reuse the resident model.
             markModelWarm();
-            activeEngineModel = ready.model || (await detectLiveModel(settings.engineUrl)) || settings.engineModel;
+            activeEngineModel = ready.model || (await detectLiveModel(engineUrl)) || settings.engineModel;
             if (ready.tier) runSku = ready.tier;
             modelName = MODELS[runSku].name;
             memPlan = planForMemory(runSku, ramGB);
@@ -1157,7 +1165,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               setStreamText("");
               let acc = "";
               let first = false;
-              for await (const part of veylaroChat(settings.engineUrl, activeEngineModel, [...sys, { role: "user", content: text }], runSku, false, signal, { num_predict: 120, num_ctx: 2048, temperature: 0.35 })) {
+              for await (const part of veylaroChat(engineUrl, activeEngineModel, [...sys, { role: "user", content: text }], runSku, false, signal, { num_predict: 120, num_ctx: 2048, temperature: 0.35 })) {
                 if (part.type === "text") { if (!first) { first = true; markModelWarm(); acc = ""; } acc += part.chunk; setStreamText(acc); }
               }
               const clean = calibrateCasualReply(text, cleanAssistantText(acc, 500), verifiedActivity);
@@ -1391,7 +1399,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
                 const collectTurn = async (messages: ChatMsg[]): Promise<string> => {
                   let output = "";
-                  for await (const part of veylaroChat(settings.engineUrl, activeEngineModel, messages, runSku, false, signal, {
+                  for await (const part of veylaroChat(engineUrl, activeEngineModel, messages, runSku, false, signal, {
                     num_ctx: memPlan.numCtx,
                     num_predict: 900,
                     temperature: 0.2,
@@ -1537,7 +1545,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               // "Loading…". Once warm, subsequent messages skip straight to "Working…".
               setStreamText(sawFirstToken || isModelWarm() ? "Working…" : "⏳ Loading Laro into memory — first reply takes a moment, then it's fast…");
 
-              for await (const part of veylaroChat(settings.engineUrl, activeEngineModel, convo, runSku, false, signal, { num_ctx: memPlan.numCtx })) {
+              for await (const part of veylaroChat(engineUrl, activeEngineModel, convo, runSku, false, signal, { num_ctx: memPlan.numCtx })) {
                 if (part.type !== "text") continue;
                 if (!sawFirstToken) { sawFirstToken = true; markModelWarm(); setStreamText("Working…"); }
                 raw += part.chunk;
