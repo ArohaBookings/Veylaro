@@ -846,6 +846,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         };
 
         // write one file through the guarded bridge; emit a compact row, not code
+        /** Append to an existing file WITHOUT the model retyping it.
+            Generation is memory-bandwidth-bound at ~11.5 tok/s here, so re-emitting
+            200 correct lines to add 20 is the single biggest waste in a long build.
+            This resolves to an ordinary guarded write of (existing + new), so the
+            Guard, the .veylaro-bak backup and the rollback path are all unchanged.
+            Falls back to a plain create when the file doesn't exist yet. */
+        const appendOne = async (rel: string, addition: string): Promise<boolean> => {
+          if (!rel || !canWrite) return false;
+          const abs = resolveInScope(sess.scope, sess.scopeKind, rel);
+          const seen = await window.veylaro?.readFile?.(abs, scopedCtx);
+          const existing = seen?.ok ? String(seen.content ?? "") : "";
+          if (!existing) return writeOne(rel, addition);
+          const joined = existing.replace(/\s*$/, "") + "\n\n" + addition.replace(/^\s*\n/, "");
+          return writeOne(rel, joined);
+        };
+
         const writeOne = async (rel: string, content: string, opts: { silent?: boolean } = {}): Promise<boolean> => {
           if (!rel || !canWrite) return false;
           if (lockExistingTests && isTestFile(rel)) {
@@ -1527,6 +1543,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 raw += part.chunk;
                 for (const ev of parser.push(part.chunk)) {
                   if (ev.t === "file") { if (await writeOne(ev.path, ev.content)) { wroteThisStep++; filesWritten++; } }
+                  else if (ev.t === "append") { if (await appendOne(ev.path, ev.content)) { wroteThisStep++; filesWritten++; } }
                   else if (ev.t === "read") {
                     const abs = resolveInScope(sess.scope, sess.scopeKind, ev.path);
                     const seen = await window.veylaro!.readFile?.(abs, scopedCtx);

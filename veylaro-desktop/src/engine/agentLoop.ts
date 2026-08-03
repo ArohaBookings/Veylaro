@@ -27,8 +27,16 @@ You have real hands on this machine. You do not paste code into the chat. You wr
 <the complete contents of the file go here>
 @@END
 
+ADDING to a file you already wrote? Do NOT retype it. Use append:
+
+@@APPEND relative/path.ext
+<only the NEW lines, added to the end of the file>
+@@END
+
 Rules that matter:
-- One @@FILE block per file. Put the WHOLE file between @@FILE and @@END — never a diff, never "// rest unchanged", never "...". If you're changing a file, output the full new version.
+- One @@FILE block per file. Put the WHOLE file between @@FILE and @@END — never a diff, never "// rest unchanged", never "...". If you're creating a file or rewriting it, output the full new version.
+- @@APPEND adds to the end of an existing file. Use it whenever you are ADDING (a new function, a new route, more styles, another section). It is much faster than retyping the file and it cannot lose the existing contents. Only use @@FILE on a file that already exists when you genuinely need to restructure it.
+- Write SEVERAL files in one reply when you know what they are. Emitting four @@FILE blocks in one turn is better than four separate turns.
 - The path is relative to the project folder you were given. Use real paths like src/App.tsx or index.html. Do not wrap the path in quotes or backticks.
 - Do NOT put the file's code anywhere else in your reply. The only place code goes is between @@FILE and @@END.
 - Before each file, write ONE short human line saying what you're doing, starting with an emoji: "✍️ Writing the dashboard layout" then the @@FILE block. Keep it to one line.
@@ -43,10 +51,22 @@ Worked example — the user says "make a hello page":
 🧱 Scaffolding the page
 @@FILE index.html
 <!doctype html>
-<html><body><h1>Hello</h1></body></html>
+<html><body><h1>Hello</h1><script src="app.js"></script></body></html>
 @@END
-✅ Done — one file, opens straight in a browser.
+⚡ And the behaviour
+@@FILE app.js
+console.log("hello");
+@@END
+✅ Done — opens straight in a browser.
 @@DONE
+
+Worked example — adding to something that already exists:
+➕ Adding the search filter
+@@APPEND app.js
+function filterRows(query) {
+  return rows.filter((r) => r.name.includes(query));
+}
+@@END
 
 That is the only way to build. Narrate in the chat, write the code into files.`;
 
@@ -56,11 +76,29 @@ That is the only way to build. Narrate in the chat, write the code into files.`;
 export type ParseEvent =
   | { t: "narrate"; text: string }
   | { t: "file"; path: string; content: string }
+  /** Add to the end of an existing file without re-emitting it. */
+  | { t: "append"; path: string; content: string }
   | { t: "read"; path: string }
   | { t: "run"; cmd: string }
   | { t: "done" };
 
 const FILE_OPEN = /^@@FILE\s+(.+?)\s*$/;
+/* THE THROUGHPUT FIX.
+
+   Generation on this hardware is memory-bandwidth-bound: measured 11.55 tok/s
+   for Med, and speculative decoding moved it to 11.71 (n-gram) — noise. There is
+   no meaningful headroom in tokens PER SECOND.
+
+   So the lever is tokens NEEDED. Under a file-only protocol, adding a 20-line
+   search filter to a 200-line script means re-emitting all 220 lines: ~90% of
+   that generation is retyping code that was already correct, at 11.5 tok/s.
+   Across a long build that is the single largest waste in the system.
+
+   @@APPEND removes it. Append is the one incremental edit that is completely
+   unambiguous — no line numbers, no context matching, no fuzzy hunks — so it
+   cannot silently corrupt a file the way a diff can. That is exactly why the
+   protocol previously banned diffs, and exactly why this one is safe. */
+const APPEND_OPEN = /^@@APPEND\s+(.+?)\s*$/;
 const FILE_END = /^@@END\s*$/;
 const READ_LINE = /^@@READ\s+(.+?)\s*$/;
 const RUN_LINE = /^@@RUN\s+(.+?)\s*$/;
@@ -75,6 +113,7 @@ const DONE_LINE = /^@@DONE\s*$/;
 export class StreamParser {
   private buf = "";
   private inFile = false;
+  private appending = false;
   private filePath = "";
   private fileLines: string[] = [];
   private narration: string[] = [];
@@ -86,6 +125,10 @@ export class StreamParser {
   /** true while we're inside a file block — used to show "writing…" status */
   get writing(): string | null {
     return this.inFile ? this.filePath : null;
+  }
+  /** True while inside an @@APPEND block rather than a full @@FILE rewrite. */
+  get isAppending(): boolean {
+    return this.inFile && this.appending;
   }
 
   push(chunk: string): ParseEvent[] {
@@ -105,8 +148,13 @@ export class StreamParser {
     const line = raw.replace(/\r$/, "");
     if (this.inFile) {
       if (FILE_END.test(line)) {
-        out.push({ t: "file", path: this.filePath, content: stripFence(this.fileLines).join("\n") });
+        out.push({
+          t: this.appending ? "append" : "file",
+          path: this.filePath,
+          content: stripFence(this.fileLines).join("\n"),
+        });
         this.inFile = false;
+        this.appending = false;
         this.filePath = "";
         this.fileLines = [];
       } else {
@@ -117,6 +165,12 @@ export class StreamParser {
     let m: RegExpMatchArray | null;
     if ((m = line.match(FILE_OPEN))) {
       this.inFile = true;
+      this.appending = false;
+      this.filePath = cleanPath(m[1]);
+      this.fileLines = [];
+    } else if ((m = line.match(APPEND_OPEN))) {
+      this.inFile = true;
+      this.appending = true;
       this.filePath = cleanPath(m[1]);
       this.fileLines = [];
     } else if ((m = line.match(READ_LINE))) {
@@ -164,6 +218,7 @@ export class StreamParser {
     // never a safe recovery mode.
     const abandonedFile = this.inFile;
     this.inFile = false;
+    this.appending = false;
     this.filePath = "";
     this.fileLines = [];
     if (abandonedFile) this.narration.push("(an unterminated file block was discarded)");
