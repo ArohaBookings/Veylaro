@@ -7,9 +7,9 @@ type ReleaseRow = {
 };
 
 const RELEASE_ROWS: ReleaseRow[] = [
-  { name: "Laro Lite", detail: "Gemma 4 E2B MLX artifact", status: "benchmark pending" },
-  { name: "Laro Med", detail: "Gemma 4 12B MLX artifact", status: "checkpoint unavailable on this host" },
-  { name: "Laro Max", detail: "24B MLX artifact", status: "requires 24 GB+ test hardware" },
+  { name: "Laro Lite", detail: "gemma-3n-E2B-it Q4_K_M · 3.0 GB", status: "runs locally · benchmark pending" },
+  { name: "Laro Med", detail: "gemma-3-12b-it Q4_K_M · 7.3 GB", status: "runs locally on 16 GB · benchmark pending" },
+  { name: "Laro Max", detail: "gemma-3-27b-it Q4_K_M · 16.5 GB", status: "requires 24 GB+ · not executed here" },
 ];
 
 export function BenchmarkChart({ compact = false }: { compact?: boolean }) {
@@ -42,7 +42,7 @@ export function BenchmarkChart({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <>
           <div className="bench-ours-note">
-            <div><b>Runtime status</b> — Lite is locally runnable. Med and Max are configured but do not have independent runnable checkpoints on this 16 GB host.</div>
+            <div><b>Runtime status</b> — Lite and Med are locally runnable and verified on a 16 GB M4 (Med: gemma-3-12b-it Q4_K_M, 64k context). Max needs 24 GB of unified memory and has not been executed on this host, so no Max figure is claimed.</div>
             <div><b>Latest completed course</b> — Lite solved 0/3 unseen local repair fixtures on 2 August 2026, before the assertion-guided repair lane was added. A separate bounded repair tournament later passed one fixture; the full course has not been rerun.</div>
           </div>
 
@@ -52,7 +52,7 @@ export function BenchmarkChart({ compact = false }: { compact?: boolean }) {
               <span className="bm-sub">Useful engineering records, not scores for the current Laro release artifacts.</span>
             </div>
             <div className="bm-cards">
-              <div className="bm-card"><b>90.9%</b><span>Gemma 4 12B via Ollama</span><em>HumanEval 149/164 · historical runtime</em></div>
+              <div className="bm-card"><b>90.9%</b><span>Gemma 4 12B · historical harness</span><em>HumanEval 149/164 · retired runtime, not the shipped engine</em></div>
               <div className="bm-card"><b>68.9%</b><span>Gemma 3 4B base</span><em>HumanEval 113/164 · historical checkpoint</em></div>
               <div className="bm-card dim"><b>0/3</b><span>Current Lite + prior execution system</span><em>latest completed small course · not SWE-bench</em></div>
             </div>

@@ -30,7 +30,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { veylaroChat, selectInstalledModel, tierFromModelName, modelPreference, type ChatMsg } from "../src/engine/runtime.ts";
+import {
+  veylaroChat, selectInstalledModel, tierFromModelName, modelPreference,
+  engineContextWindow, exactCounter, type ChatMsg,
+} from "../src/engine/runtime.ts";
+import { budgetFor, fitConversation, normalizeForTemplate } from "../src/engine/contextBudget.ts";
 import { StreamParser, FILE_PROTOCOL_PROMPT, resolveInScope, diffCounts, salvageFences, type ParseEvent } from "../src/engine/agentLoop.ts";
 import { SOVEREIGN_FORGE_PROMPT, laroContext } from "../src/engine/charter.ts";
 import { compileExecutionContract } from "../src/engine/contractCompiler.ts";
@@ -38,10 +42,12 @@ import { verificationCommands, reproductionCommand } from "../src/engine/verific
 import { compactFailureEvidence, diagnoseFailure } from "../src/engine/failureKernel.ts";
 import { classifyModelCommand } from "../src/engine/commandPolicy.ts";
 import { assessDeliverable, continuationBrief } from "../src/engine/completionGate.ts";
+import { stepPolicy } from "../src/engine/stepBudget.ts";
 import type { ModelId } from "../src/types.ts";
 
 const SERVER = { name: "veylaro-code", version: "0.1.0" };
-const CANDIDATE_ENDPOINTS = ["http://127.0.0.1:11434", "http://127.0.0.1:8080"];
+// Veylaro serves its own engine on :8080. There is no third-party runtime.
+const CANDIDATE_ENDPOINTS = ["http://127.0.0.1:8080"];
 const TIER_TAG: Record<ModelId, string> = { lite: "laro-lite", med: "laro-med", max: "laro-max" };
 
 const log = (...a: unknown[]) => process.stderr.write(a.map(String).join(" ") + "\n");
@@ -80,10 +86,22 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 
 async function* streamRaw(endpoint: string, model: string, messages: ChatMsg[], signal?: AbortSignal) {
   const base = endpoint.replace(/\/$/, "");
+  // A benchmark harness that hits the context ceiling reports the HARNESS failing,
+  // not the model — so the pinned-model path gets exactly the same treatment as
+  // the shipped one: fit to the engine's real window, and normalise roles for
+  // templates (Gemma's) that refuse anything but strict alternation.
+  const numCtx = (await engineContextWindow(base, model)) ?? 8192;
+  const budget = budgetFor(numCtx, 2048);
+  const count = await exactCounter(base, messages);
+  const fitted = fitConversation(messages, budget.prompt, count);
   const res = await fetch(`${base}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, messages, stream: true, seed: 42, max_tokens: 2048, temperature: 0.3, top_p: 0.9 }),
+    body: JSON.stringify({
+      model,
+      messages: normalizeForTemplate(fitted.messages),
+      stream: true, seed: 42, max_tokens: budget.reply, temperature: 0.3, top_p: 0.9,
+    }),
     signal,
   });
   if (!res.ok || !res.body) throw new Error(`engine responded ${res.status}`);
@@ -155,11 +173,13 @@ interface BuildArgs {
 
 async function headlessBuild(args: BuildArgs) {
   const tier: ModelId = args.tier || "med";
-  const maxSteps = clampInt(args.maxSteps, 1, 16, 8);
+  // No ambition ceiling here either — the app removed its hard-wired cap, so a
+  // harness that stops at 16 would under-report what the product actually does.
+  const maxSteps = clampInt(args.maxSteps, 1, 400, stepPolicy(String(args.task || ""), tier).hard);
   const repairTurns = clampInt(args.repairTurns, 0, 4, 2);
 
   const chosen = await pickEndpoint(args.endpoint);
-  if (!chosen) return { ok: false, error: "No local engine reachable on :11434 or :8080." };
+  if (!chosen) return { ok: false, error: "No local Veylaro engine reachable on :8080. Start Veylaro Code, or run the bundled llama-server." };
   const endpoint = chosen.endpoint;
 
   // Resolve the model we will actually talk to (for the report + Laro-tier guard).
@@ -170,7 +190,7 @@ async function headlessBuild(args: BuildArgs) {
       return { ok: false, error: `Endpoint ${endpoint} does not serve Laro ${tier}. Available: ${chosen.models.join(", ")}` };
     }
   } else {
-    // Match loosely so an explicit "laro-lite" resolves ollama's "laro-lite:latest".
+    // Match loosely so an explicit "laro-lite" resolves a served id with a suffix.
     const strip = (s: string) => s.replace(/:latest$/, "");
     const match = chosen.models.find((m) => m === resolvedModel || strip(m) === strip(resolvedModel));
     if (!match) {
@@ -517,9 +537,9 @@ const TOOLS = [
         task: { type: "string", description: "What to build or fix." },
         tier: { type: "string", enum: ["lite", "med", "max"], description: "Product tier to drive (default med). Ignored if `model` is set." },
         model: { type: "string", description: "Pin an exact served model id (e.g. mlx-community/Qwen2.5-Coder-3B-Instruct-4bit) to benchmark an alternative base." },
-        endpoint: { type: "string", description: "Engine endpoint (default: auto-detect :11434 then :8080)." },
+        endpoint: { type: "string", description: "Engine endpoint (default: the Veylaro engine on :8080)." },
         dir: { type: "string", description: "Workspace dir (default: an isolated temp dir)." },
-        maxSteps: { type: "number", description: "Max model turns (1–16, default 8)." },
+        maxSteps: { type: "number", description: "Max model turns (1–400; defaults to the ambition-scaled budget for the task)." },
         repairTurns: { type: "number", description: "Bounded repair turns on failure (0–4, default 2)." },
       },
     },

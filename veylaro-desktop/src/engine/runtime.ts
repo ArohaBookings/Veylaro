@@ -22,6 +22,11 @@ export interface ChatMsg {
     source of truth for how each model is driven. Lite trades ceiling for
     snap; Max gets full depth. */
 import { runtimeFor, TIER_BY_ID } from "./tiers";
+import {
+  budgetFor, compactionTarget, conversationTokens, estimateTokens, fitConversation,
+  isContextOverflow, normalizeForTemplate,
+} from "./contextBudget";
+import type { TokenCount } from "./contextBudget";
 import type { ModelId } from "../types";
 
 function optsFor(sku: ModelId) {
@@ -68,6 +73,113 @@ export function selectInstalledModel(models: string[], preferred: string, sku: M
   const owned = models.find((model) => tierFromModelName(model) === sku);
   if (owned) return owned;
   return "";
+}
+
+/* ---- the engine's REAL context window ----------------------------------
+   Never guess this. The renderer used to compute a context plan of its own and
+   never send it, so it had no idea what the server would accept and discovered
+   the ceiling as an HTTP 400 in the middle of a build. llama.cpp reports the
+   window it was actually started with at /props; that number is the only one
+   worth budgeting against. Cached per endpoint, re-probed when the engine
+   restarts on a different tier (the cache key includes the reported model). */
+const ctxCache = new Map<string, { model: string; numCtx: number }>();
+
+export async function engineContextWindow(url: string, model = "", timeout = 2000): Promise<number | null> {
+  const base = url.replace(/\/$/, "");
+  const hit = ctxCache.get(base);
+  if (hit && (!model || hit.model === model)) return hit.numCtx;
+  try {
+    const res = await fetch(`${base}/props`, { signal: AbortSignal.timeout(timeout) });
+    if (!res.ok) return null;
+    const body = await res.json();
+    const n = Number(body?.default_generation_settings?.n_ctx);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    ctxCache.set(base, { model: model || String(body?.model_path || ""), numCtx: n });
+    return n;
+  } catch {
+    return null;
+  }
+}
+
+export function forgetContextWindow(url?: string): void {
+  if (url) ctxCache.delete(url.replace(/\/$/, ""));
+  else ctxCache.clear();
+}
+
+/* ---- EXACT token counting -----------------------------------------------
+   The chars-per-token heuristic is not good enough to bet a build on. Measured
+   against this very tokenizer: english prose is 4.70 chars/token, minified JS is
+   1.06 — a 4.4x spread. A single divisor is either wasteful or wrong, and "wrong"
+   means the engine refuses the request mid-build.
+
+   llama.cpp exposes /tokenize locally, so exactness is free. Results are cached
+   by content: the agent loop is append-mostly, so each message is tokenized once
+   no matter how many steps reuse it. */
+const tokenCache = new Map<string, number>();
+const TOKEN_CACHE_MAX = 4000;
+
+function cacheTokens(text: string, n: number): number {
+  if (tokenCache.size >= TOKEN_CACHE_MAX) {
+    // cheap FIFO eviction — the oldest quarter goes
+    let drop = Math.floor(TOKEN_CACHE_MAX / 4);
+    for (const k of tokenCache.keys()) { tokenCache.delete(k); if (--drop <= 0) break; }
+  }
+  tokenCache.set(text, n);
+  return n;
+}
+
+/** Tokenize with the engine's own vocabulary. Returns null when the endpoint
+    isn't a llama.cpp server (or is busy) so the caller can fall back. */
+async function tokenizeExact(base: string, text: string, timeout = 4000): Promise<number | null> {
+  const hit = tokenCache.get(text);
+  if (hit !== undefined) return hit;
+  try {
+    const res = await fetch(`${base}/tokenize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: text }),
+      signal: AbortSignal.timeout(timeout),
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    const n = Array.isArray(body?.tokens) ? body.tokens.length : NaN;
+    if (!Number.isFinite(n)) return null;
+    return cacheTokens(text, n);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build an exact token counter for this conversation.
+ *
+ * Every message is measured against the real vocabulary up front (cached, so
+ * repeat steps are free); the returned function is synchronous so the fitting
+ * logic stays pure and testable. If the endpoint can't tokenize, the caller
+ * silently gets the conservative heuristic instead.
+ */
+export async function exactCounter(url: string, messages: readonly ChatMsg[]): Promise<TokenCount> {
+  const base = url.replace(/\/$/, "");
+  const unique = [...new Set(messages.map((m) => m.content))];
+  const measured = await Promise.all(unique.map((text) => tokenizeExact(base, text)));
+  if (measured.some((n) => n === null)) return estimateTokens; // endpoint can't tokenize
+
+  // Clamping produces text that was never measured. Rather than fall back to a
+  // global guess, calibrate on THIS conversation: take the densest observed
+  // chars-per-token and shave 10%. A run full of minified bundles gets a tight
+  // ratio; a run of prose gets a generous one. Both stay on the safe side.
+  let densest = Infinity;
+  unique.forEach((text, i) => {
+    const n = measured[i] as number;
+    if (text.length >= 200 && n > 0) densest = Math.min(densest, text.length / n);
+  });
+  const fallbackRatio = Number.isFinite(densest) ? Math.max(0.5, densest * 0.9) : 1.9;
+
+  return (text: string) => {
+    const known = tokenCache.get(text);
+    if (known !== undefined) return known;
+    return Math.ceil(text.length / fallbackRatio);
+  };
 }
 
 async function discover(url: string, timeout = 2500): Promise<Discovery | null> {
@@ -195,25 +307,56 @@ export async function* veylaroChat(
   if (!found) throw new Error("the local engine is not ready");
   const selectedModel = selectInstalledModel(found.models, model, sku);
   if (!selectedModel) throw new Error(`the local endpoint does not provide Laro ${sku}`);
-  const requestBody = JSON.stringify({
+
+  const replyTokens = overrides.num_predict ?? optsFor(sku).num_predict;
+  // The engine's REAL window wins over anything the caller believes. A caller's
+  // hint is only a floor-of-last-resort for endpoints that don't report /props.
+  const probed = await engineContextWindow(base, selectedModel);
+  const numCtx = probed ?? overrides.num_ctx ?? optsFor(sku).num_ctx;
+  const budget = budgetFor(numCtx, replyTokens);
+
+  // THE FIX. llama.cpp does not truncate an over-long prompt, it refuses it with
+  // HTTP 400 exceed_context_size_error — and for Gemma's sliding-window attention
+  // it also refuses to enable KV cache shifting, so there is no server-side safety
+  // net at all. Fitting here is what lets a long build run for as many steps as
+  // the task needs instead of dying a few steps in.
+  // Count with the engine's own vocabulary, not a divisor. This is what makes the
+  // fit trustworthy enough to run a 20-step build against.
+  const count = await exactCounter(base, messages);
+  // Under the ceiling: send as-is, so the engine's prefix cache hits and only the
+  // newly appended tokens are processed. Over it: compact well BELOW the ceiling
+  // (see LOW_WATER) so the next several steps are cache hits again, instead of
+  // paying a full multi-minute re-evaluation on every single step.
+  const fitted = conversationTokens(messages, count) <= budget.prompt
+    ? fitConversation(messages, budget.prompt, count)
+    : fitConversation(messages, compactionTarget(budget.prompt), count);
+  const body = (msgs: ChatMsg[]) => JSON.stringify({
     model: selectedModel,
-    messages,
+    // Gemma's template REFUSES non-alternating roles with its own 400. Normalise
+    // last, after fitting, because dropping messages can itself create a run of
+    // same-role turns that did not exist in the original conversation.
+    messages: normalizeForTemplate(msgs),
     stream: true,
-    // mlx-lm 0.29.1's continuous BatchRotatingKVCache can corrupt the
-    // second Gemma request when prompt lengths differ. A fixed seed routes
-    // the server through its stable single-sequence generator and also
-    // makes agent retries reproducible.
+    // A fixed seed makes agent retries reproducible.
     seed: overrides.seed ?? 42,
-    max_tokens: overrides.num_predict ?? optsFor(sku).num_predict,
+    max_tokens: budget.reply,
     temperature: overrides.temperature ?? optsFor(sku).temperature,
     top_p: overrides.top_p ?? optsFor(sku).top_p,
   });
 
-  // Reliability: under memory pressure mlx-lm can close the socket before it
+  let sending = fitted.messages;
+  let requestBody = body(sending);
+
+  // Reliability: under memory pressure the engine can close the socket before it
   // answers ("Remote end closed connection without response"). That is safe to
   // retry ONLY before any token has streamed — once output has started a retry
   // would duplicate it, so we surface the error instead. Bounded, with backoff.
-  const MAX_ATTEMPTS = 3;
+  //
+  // A context overflow is retried differently: our token estimate was optimistic,
+  // so we re-fit against a harder budget rather than backing off and repeating
+  // the identical over-long request.
+  const MAX_ATTEMPTS = 4;
+  let squeeze = 1;
   for (let attempt = 1; ; attempt++) {
     let produced = false;
     try {
@@ -223,7 +366,11 @@ export async function* veylaroChat(
         body: requestBody,
         signal,
       });
-      if (!res.ok || !res.body) throw new Error(`Laro engine responded ${res.status}`);
+      if (!res.ok || !res.body) {
+        let detail = "";
+        try { detail = (await res.text()).slice(0, 400); } catch { /* body already consumed */ }
+        throw new Error(`Laro engine responded ${res.status}${detail ? `: ${detail}` : ""}`);
+      }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
@@ -251,6 +398,18 @@ export async function* veylaroChat(
       }
       return; // stream ended cleanly
     } catch (err) {
+      if (!produced && attempt < MAX_ATTEMPTS && !signal?.aborted && isContextOverflow(err)) {
+        // Our estimate under-counted. Halve the prompt allowance and re-fit; the
+        // system contract and the user's request survive every squeeze.
+        squeeze *= 2;
+        const tighter = Math.max(512, Math.floor(budget.prompt / squeeze));
+        const refit = fitConversation(sending, tighter, count);
+        // No further reduction possible — surface it rather than spin.
+        if (refit.tokens >= conversationTokens(sending, count)) throw err;
+        sending = refit.messages;
+        requestBody = body(sending);
+        continue;
+      }
       if (!produced && attempt < MAX_ATTEMPTS && !signal?.aborted && isTransientEngineError(err)) {
         await new Promise((r) => setTimeout(r, 300 * attempt));
         continue;

@@ -32,6 +32,11 @@ let engineStartedByApp = false;
 let engineLog = "";
 let engineTier = null;
 let engineModel = null;
+// The context window the running server was actually started with. The renderer
+// budgets its conversation against THIS number — previously it computed a plan of
+// its own and never sent it, so it had no idea what the engine would accept and
+// discovered the ceiling as an HTTP 400 mid-build.
+let engineNumCtx = null;
 
 async function discoverEngine(raw, preferredModel = "", sku = "lite", timeoutMs = 1200) {
   const base = engineBase(raw);
@@ -161,6 +166,7 @@ async function ensureEngine(raw, preferredModel = "", sku = "lite") {
     engineStartedByApp = true;
     engineTier = spec.tier;
     engineModel = spec.model;
+    engineNumCtx = spec.numCtx || null;
     const capture = (chunk) => { engineLog = (engineLog + String(chunk)).slice(-5000); };
     child.stdout?.on("data", capture);
     child.stderr?.on("data", capture);
@@ -170,12 +176,14 @@ async function ensureEngine(raw, preferredModel = "", sku = "lite") {
       engineStartedByApp = false;
       engineTier = null;
       engineModel = null;
+      engineNumCtx = null;
     });
   } catch (error) {
     engineProcess = null;
     engineStartedByApp = false;
     engineTier = null;
     engineModel = null;
+    engineNumCtx = null;
     return { ok: false, url: engineBase(raw), error: String(error?.message || error) };
   }
 
@@ -203,6 +211,7 @@ function stopOwnedEngine() {
   engineStartedByApp = false;
   engineTier = null;
   engineModel = null;
+  engineNumCtx = null;
   return { ok: true, stopped: true };
 }
 

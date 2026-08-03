@@ -93,8 +93,10 @@ import { GROUNDING_NOTE, LARO_SIDE_CHARTER, SOVEREIGN_FORGE_PROMPT, laroContext 
 import { evidenceBudget, EXECUTION_LATTICE_PROMPT } from "../engine/executionLattice";
 import { cleanAssistantText, collapseReason } from "../engine/outputHygiene";
 import { extractRepairFiles } from "../engine/repairCandidates";
-import { liteReinforced, canSyntaxCheck, checkInProcess, wroteCodeButNoFile, protocolRepairBrief } from "../engine/liteBoost";
+import { liteReinforced, canSyntaxCheck, checkInProcess } from "../engine/liteBoost";
 import { assessDeliverable, continuationBrief } from "../engine/completionGate";
+import { continuationPressure, stepPolicy, stopReason } from "../engine/stepBudget";
+import { enforcementBrief, isProtocolFailure } from "../engine/protocolEnforcer";
 import { synthesizeSemanticRepairs } from "../engine/semanticRepair";
 import { explicitlyRequestsTestEdits, isProtectedTestPath } from "../engine/testIntegrity";
 import { classifyModelCommand } from "../engine/commandPolicy";
@@ -237,9 +239,11 @@ function hydrate(p: Persisted): Persisted {
     p.usage = mirror;
   }
   p.settings = { ...DEFAULT_SETTINGS, ...p.settings };
-  // Migrate the old external-runtime default. Explicit custom endpoints are
-  // preserved; only the legacy stock address moves to the app-owned MLX service.
-  if (p.settings.engineUrl === "http://127.0.0.1:11434" && /^(veylaro|veylaro-code|laro-(?:lite|med|max))(?::latest)?$/.test(p.settings.engineModel)) {
+  // Veylaro runs its OWN engine. Any profile still pointing at a third-party
+  // runtime's stock address is migrated to the app-owned engine — there is no
+  // external runtime in the product any more, so leaving it there would just
+  // fail to connect. A genuinely custom endpoint the user typed is preserved.
+  if (p.settings.engineUrl === "http://127.0.0.1:11434") {
     p.settings.engineUrl = "http://127.0.0.1:8080";
   }
   p.sessions = p.sessions.map((s) => ({ ...s, term: s.term || [] }));
@@ -1208,8 +1212,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             if (memPlan.fits === "downshift" || memPlan.fits === "tight") {
               appendEvent(sess.id, agentMsg.id, { kind: "step", text: `💾 ${memPlan.note}` });
             }
-            const broadMission = /\b(full|complete|entire|end[- ]to[- ]end|saas|game|repository|repo|debug|repair|migrate|refactor)\b/i.test(text);
-            const maxSteps = runSku === "lite" ? (broadMission ? 16 : 12) : runSku === "max" ? (broadMission ? 22 : 14) : (broadMission ? 18 : 13);
+            // NO AMBITION CEILING. The old fixed 12-22 step cap ended real builds
+            // mid-file with a cheerful recap. The budget now scales with what was
+            // actually asked for, and the loop stops on evidence (done / stalled /
+            // aborted) rather than on a turn counter. See engine/stepBudget.ts.
+            const stepPlan = stepPolicy(text, runSku);
+            const maxSteps = stepPlan.hard;
+            let consecutiveIdle = 0;
             let filesWritten = 0;
             let lastNarration = "";
             let done = false;
@@ -1487,7 +1496,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               }
             }
 
-            while (!done && step < maxSteps && !signal.aborted) {
+            while (!done && !signal.aborted) {
+              const stop = stopReason(
+                { step, consecutiveIdle, deliverableComplete: false, requestedDone: false, aborted: signal.aborted },
+                stepPlan,
+              );
+              if (stop === "stalled") { stepLine(`stopping — ${stepPlan.stallLimit} steps in a row produced nothing new`); break; }
+              if (stop === "runaway") { stepLine(`stopping at the ${stepPlan.hard}-step safety limit`); break; }
+              if (stop === "aborted") break;
               step++;
               const parser = new StreamParser();
               let raw = "";
@@ -1539,6 +1555,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               observations.push(...writeFeedback.splice(0));
 
               convo.push({ role: "assistant", content: raw });
+              if (wroteThisStep > 0 || ranThisStep > 0) consecutiveIdle = 0;
               if (signal.aborted) break;
 
               const collapsed = collapseReason(raw);
@@ -1571,39 +1588,51 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               // disk against what was asked; when it falls short, refuse the claim
               // and hand back the specific gaps so the next turn closes them. The
               // gap list drives the loop instead of a vague "keep going".
-              if (deliverable.size && step < maxSteps) {
-                const verdict = assessDeliverable(text, [...deliverable].map(([p, c]) => ({ path: p, content: c })), {
-                  existingProject: !!verificationInput.rootEntries?.length,
-                });
-                if (!verdict.complete) {
-                  if (requestedDone) stepLine(`not done yet — ${verdict.missing.length} gap${verdict.missing.length === 1 ? "" : "s"} left, keeping going`);
-                  convo.push({ role: "user", content: continuationBrief(verdict) });
-                  continue;
-                }
-              }
-              if (requestedDone) { done = true; break; }
-              // No file ops this step. If Laro just described a plan (which small
-              // models do), nudge it HARD to start writing files instead of stopping.
-              // Only give up if a second nudge still produces nothing (real Q&A).
-              if (wroteThisStep === 0 && ranThisStep === 0) {
-                // Lite protocol enforcer: the small model wrote code but never put
-                // it in a file, so nothing saved. Force the exact @@FILE shape with
-                // a surgical brief rather than stalling. Once, for the Lite tier.
-                if (liteReinforced(requestedSku) && !nudgedToBuild && step < maxSteps && wroteCodeButNoFile(raw, wroteThisStep)) {
-                  nudgedToBuild = true;
-                  stepLine("you wrote code but didn't save it — forcing the file protocol");
-                  convo.push({ role: "user", content: protocolRepairBrief() });
-                  continue;
-                }
-                if (nudgedToBuild || !looksLikeBuild(text) || step >= maxSteps) break;
+              const verdict = deliverable.size
+                ? assessDeliverable(text, [...deliverable].map(([p, c]) => ({ path: p, content: c })), {
+                    existingProject: !!verificationInput.rootEntries?.length,
+                  })
+                : null;
+
+              // AN IDLE STEP IS A PROTOCOL FAILURE, NOT A CONVERSATION.
+              // This must be judged BEFORE the completion gate's prose brief.
+              // Measured on Med: step 1 wrote index.html, the gate correctly
+              // rejected it, and the prose brief that followed was answered with
+              // more prose — twice — until the run stalled at 51 lines. The gate
+              // explains WHAT is missing; it does not compel the model back into
+              // the file protocol. When a step produced nothing, the narrowing
+              // enforcement brief wins.
+              if (isProtocolFailure(wroteThisStep, ranThisStep)) {
+                consecutiveIdle++;
+                if (!looksLikeBuild(text)) break;
+                if (consecutiveIdle > stepPlan.stallLimit) break;
                 nudgedToBuild = true;
-                stepLine("starting to write the files now");
-                convo.push({ role: "user", content: "Stop describing the plan. Write the first real file NOW using @@FILE … @@END, then the next, until it's built. Begin your reply with the @@FILE block." });
+                const brief = enforcementBrief({
+                  request: text,
+                  missing: verdict?.missing ?? [],
+                  existingPaths: [...deliverable.keys()],
+                  attempt: consecutiveIdle,
+                });
+                stepLine(consecutiveIdle === 1
+                  ? "nothing was saved that step — forcing the file protocol"
+                  : `still nothing saved (${consecutiveIdle}) — narrowing to a single file`);
+                convo.push({ role: "user", content: brief });
                 continue;
               }
-              if (step < maxSteps) {
-                convo.push({ role: "user", content: "Keep going until the task is genuinely complete and would actually run. If every file is written and it works, output @@DONE on its own line — otherwise write the next file now, don't stop early and don't ask whether to continue." });
+
+              if (verdict && !verdict.complete) {
+                if (requestedDone) stepLine(`not done yet — ${verdict.missing.length} gap${verdict.missing.length === 1 ? "" : "s"} left, keeping going`);
+                convo.push({ role: "user", content: continuationBrief(verdict) });
+                continue;
               }
+              if (requestedDone) { done = true; break; }
+              convo.push({
+                role: "user",
+                content: continuationPressure(
+                  { step, consecutiveIdle, deliverableComplete: false, requestedDone, aborted: false },
+                  stepPlan,
+                ),
+              });
             }
 
             if (signal.aborted) throw new DOMException("run stopped", "AbortError");
@@ -1985,7 +2014,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       (async () => {
         // Find a live local engine, independent of the main build-engine toggle:
         // the configured URL first, then the usual local endpoints.
-        const urls = [...new Set([st.settings.engineUrl, "http://127.0.0.1:8080", "http://127.0.0.1:11434"])].filter(Boolean);
+        const urls = [...new Set([st.settings.engineUrl, "http://127.0.0.1:8080"])].filter(Boolean);
         let url = "";
         let model = "";
         for (const u of urls) {

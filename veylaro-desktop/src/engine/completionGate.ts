@@ -50,16 +50,24 @@ export function ambitionFloor(request: string): { lines: number; files: number; 
   const r = request.toLowerCase();
   const massive = /\b(whole|entire|complete|full|end[- ]to[- ]end|production|enterprise|comprehensive|everything|thousands|from scratch)\b/.test(r);
   const product = /\b(saas|platform|product|system|dashboard|portal|admin|app|application|suite|marketplace|crm|erp|receptionist|booking|checkout|store|shop)\b/.test(r);
+  // A game is its own kind of ambition: engine, state, input, render loop, assets.
+  const game = /\b(game|minecraft|voxel|roguelike|platformer|rpg|shooter|puzzle|multiplayer|physics)\b/.test(r);
   const ui = UI_REQUEST.test(r);
   const api = API_REQUEST.test(r);
-  if (massive && product) return { lines: 1500, files: 8, label: "A complete product" };
-  if (massive) return { lines: 800, files: 5, label: "A complete build" };
-  if (product && (ui || api)) return { lines: 700, files: 5, label: "A product surface" };
-  if (product) return { lines: 500, files: 4, label: "A product" };
-  if (ui && api) return { lines: 450, files: 3, label: "A full-stack feature" };
-  if (ui) return { lines: 320, files: 2, label: "A real interface" };
-  if (api) return { lines: 260, files: 2, label: "A working service" };
-  return { lines: 120, files: 1, label: "A working result" };
+  // These floors are calibrated to what the thing actually IS, not to what a
+  // small model finds comfortable. A real SaaS is five figures of code; a real
+  // interface is hundreds of lines, never a single <h1>. The gate is what stops
+  // the model declaring victory on an outline, so the floors have to be honest
+  // about the size of the job even when that means many more steps.
+  if (massive && (product || game)) return { lines: 6000, files: 15, label: "A complete product" };
+  if (game) return { lines: 2500, files: 6, label: "A playable game" };
+  if (massive) return { lines: 2500, files: 10, label: "A complete build" };
+  if (product && (ui || api)) return { lines: 1500, files: 8, label: "A product surface" };
+  if (product) return { lines: 1000, files: 6, label: "A product" };
+  if (ui && api) return { lines: 900, files: 5, label: "A full-stack feature" };
+  if (ui) return { lines: 500, files: 3, label: "A real interface" };
+  if (api) return { lines: 450, files: 3, label: "A working service" };
+  return { lines: 150, files: 1, label: "A working result" };
 }
 
 function codeLines(content: string): number {

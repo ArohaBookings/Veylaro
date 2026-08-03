@@ -25,13 +25,31 @@ function ModelMenu() {
       document.removeEventListener("keydown", esc);
     };
   }, []);
+
+  /* The catalog is LIVE state, not a mount-time constant.
+     The old code read it once with an empty dep array, so a tier downloaded
+     during the session stayed greyed out until the app was restarted — which is
+     exactly the "I downloaded Med and it isn't clickable" report. Three triggers
+     now keep it honest: mount, every time the menu is opened, and the moment a
+     download reports completion. */
+  const refresh = useRef<() => void>(() => {});
   useEffect(() => {
     let active = true;
-    window.veylaro?.modelCatalog?.().then((result) => {
-      if (active) setCatalog(result.models);
-    }).catch(() => {});
-    return () => { active = false; };
+    const load = () => {
+      window.veylaro?.modelCatalog?.().then((result) => {
+        if (active && result?.models) setCatalog(result.models);
+      }).catch(() => {});
+    };
+    refresh.current = load;
+    load();
+    // A finished install is the event that used to be missed entirely.
+    const off = window.veylaro?.onModelProgress?.((p: { received?: number; total?: number }) => {
+      if (p && p.total && p.received && p.received >= p.total) load();
+    });
+    return () => { active = false; off?.(); };
   }, []);
+  useEffect(() => { if (open) refresh.current(); }, [open]);
+
   return (
     <div className="mmenu" ref={ref}>
       {open && (
@@ -39,15 +57,28 @@ function ModelMenu() {
           <div className="mmenu-h">Models</div>
           {(["lite", "med", "max"] as ModelId[]).map((m) => {
             const fit = fitCheck(m, ramGB);
+            const loading = catalog === null;
             const installed = liveTier === m || Boolean(catalog?.some((item) => item.tier === m && item.installed));
-            const endpointMismatch = !installed;
-            const unavailable = fit.status === "insufficient" || !installed;
+            // "Not installed" is a claim about the disk. Until the catalog has
+            // actually answered we say "checking", because asserting a model is
+            // missing when we simply haven't looked is how a downloaded tier ends
+            // up permanently greyed out.
+            const notInstalled = !loading && !installed;
+            const tooBig = fit.status === "insufficient";
+            const unavailable = loading || notInstalled || tooBig;
+            const why = loading
+              ? "Checking what's installed…"
+              : notInstalled
+                ? `${MODELS[m].name} isn't downloaded yet — get it from Settings → Models.`
+                : tooBig
+                  ? fit.note
+                  : fit.note;
             return (
               <button
                 key={m}
                 className={`mmenu-item ${settings.model === m ? "on" : ""}`}
                 disabled={unavailable}
-                title={endpointMismatch ? `${MODELS[m].name} is not installed.` : fit.note}
+                title={why}
                 onClick={() => {
                   setSettings({ model: m, autoPickModel: false });
                   setOpen(false);
@@ -55,10 +86,12 @@ function ModelMenu() {
               >
                 <span className="mm-name">{MODELS[m].name}</span>
                 <span className="mm-desc">
-                  {endpointMismatch
-                    ? "checkpoint not available here"
-                    : fit.status === "insufficient"
-                      ? `needs ${MODELS[m].ram}`
+                  {loading
+                    ? "checking…"
+                    : notInstalled
+                      ? "not downloaded — get it in Settings"
+                      : tooBig
+                        ? `needs ${MODELS[m].ram} — this Mac has ${ramGB} GB`
                     : m === "lite"
                       ? "fast · light machines"
                       : m === "med"

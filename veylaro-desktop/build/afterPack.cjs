@@ -1,51 +1,65 @@
 /* electron-builder afterPack hook.
  *
- * Ad-hoc signing exists only for an explicitly requested local development
- * artifact. It is not trusted distribution signing and does not prevent the
- * Gatekeeper malware/damaged-app warning after download.
+ * Two jobs, and only the second one is optional:
  *
- * Safe + best-effort: any failure is logged and ignored so it can never break
- * the build. macOS-only.
+ * 1. MAKE THE BUNDLED ENGINE PORTABLE — always, every build, every channel.
+ *    The engine is linked against its cmake build directory (@rpath) and against
+ *    Homebrew's OpenSSL by absolute path. Neither exists on a stranger's Mac, so
+ *    without this the downloaded app has a dead engine and the user just sees
+ *    "Laro's engine did not become ready". This previously ran ONLY when
+ *    VEYLARO_LOCAL_ADHOC=1 — i.e. never on the artifact we actually ship, which
+ *    is the worst possible place for a fix to be conditional. It is now
+ *    unconditional and its result is reported; a still-dangling dependency fails
+ *    the build rather than shipping a dead engine.
+ *
+ * 2. AD-HOC SIGNING — local development artifacts only. Not trusted distribution
+ *    signing; it does not prevent Gatekeeper's warning after download.
+ *
+ * Order matters: install_name_tool invalidates code signatures, so relinking must
+ * happen BEFORE any signing pass.
  */
 const { execFileSync } = require("node:child_process");
-const fs = require("node:fs");
 const path = require("path");
+const { selfContainEngineDir } = require("./bundleEngineDeps.cjs");
+const fs = require("node:fs");
 
-/* Make the bundled llama.cpp engine relocation-safe. cmake bakes the absolute
- * build directory into the binary's LC_RPATH, so once bundled it can't find its
- * dylibs on any other machine (dyld: "Library not loaded: @rpath/…"). Rewrite the
- * rpath to @loader_path (dylibs sit next to the binary) and strip the absolute
- * build path. Idempotent + best-effort. This is the difference between a working
- * download and a dead engine on every stranger's Mac. */
-function patchEngineRpath(appPath) {
+function makeEnginePortable(appPath) {
   const root = path.join(appPath, "Contents", "Resources", "runtime-release");
   let subdirs = [];
-  try { subdirs = fs.readdirSync(root); } catch { return; }
-  let patched = 0;
+  try { subdirs = fs.readdirSync(root); } catch { return { skipped: true }; }
+  const problems = [];
   for (const sub of subdirs) {
     const dir = path.join(root, sub);
-    let files = [];
-    try { files = fs.readdirSync(dir).filter((f) => f === "llama-server" || f.endsWith(".dylib")); } catch { continue; }
-    for (const f of files) {
-      const fp = path.join(dir, f);
-      try { execFileSync("install_name_tool", ["-add_rpath", "@loader_path", fp], { stdio: "ignore" }); } catch { /* already present */ }
-      try {
-        const out = execFileSync("otool", ["-l", fp], { encoding: "utf8" });
-        const bad = [...out.matchAll(/\bpath (\/(?:private|Volumes|Users|tmp)\/[^\s(]+)/g)].map((m) => m[1]);
-        for (const b of new Set(bad)) { try { execFileSync("install_name_tool", ["-delete_rpath", b, fp], { stdio: "ignore" }); } catch { /* not present */ } }
-      } catch { /* otool failed — skip */ }
-      patched += 1;
-    }
+    try { if (!fs.statSync(dir).isDirectory()) continue; } catch { continue; }
+    const report = selfContainEngineDir(dir);
+    if (report.skipped) continue;
+    console.log(
+      `  [afterPack] engine ${sub}: vendored ${report.copied.length}, relinked ${report.rewritten.length}, ` +
+      `rpath ${report.patched}, re-signed ${report.signed}`,
+    );
+    for (const d of report.dangling || []) problems.push(`${sub}: dangling ${d}`);
+    for (const u of report.unsigned || []) problems.push(`${sub}: unsigned ${u}`);
   }
-  if (patched) console.log(`  [afterPack] engine rpath -> @loader_path on ${patched} file(s)`);
+  return { problems };
 }
 
 exports.default = async function afterPack(context) {
   if (context.electronPlatformName !== "darwin") return;
-  if (process.env.VEYLARO_LOCAL_ADHOC !== "1") return;
   const appName = `${context.packager.appInfo.productFilename}.app`;
   const appPath = path.join(context.appOutDir, appName);
-  patchEngineRpath(appPath); // must run BEFORE signing (install_name_tool invalidates sigs)
+
+  // ALWAYS — this is the difference between a working download and a dead engine.
+  const { problems = [] } = makeEnginePortable(appPath);
+  if (problems.length) {
+    // Fail loudly. Shipping this produces an app that installs fine and then
+    // never answers a single message.
+    throw new Error(
+      `Bundled engine is not self-contained; refusing to package:\n  - ${problems.join("\n  - ")}`,
+    );
+  }
+
+  // Local-only convenience signing.
+  if (process.env.VEYLARO_LOCAL_ADHOC !== "1") return;
   try {
     execFileSync("codesign", ["--force", "--deep", "--sign", "-", appPath], { stdio: "inherit" });
     console.log(`  [afterPack] ad-hoc signed local-only ${appName}`);

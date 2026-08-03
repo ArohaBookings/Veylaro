@@ -208,7 +208,7 @@ function ggufLooksComplete(file, minimumBytes = 50 * 1024 * 1024) {
 }
 
 /** SELF-CONTAINED ENGINE (llama.cpp). A single relocatable binary + a GGUF —
-    no Python, no MLX, no ollama. Packaged: the binary is bundled in
+    no Python, no third-party model runtime. Packaged: the binary is bundled in
     runtime-release/<platform>-<arch>/ and the GGUF is installed under
     userData/models/<tier>/model.gguf. Dev: point VEYLARO_LLAMACPP_SERVER at a
     built llama-server and VEYLARO_<TIER>_GGUF at a local GGUF. Returns null when
@@ -235,13 +235,36 @@ function llamacppLaunchSpec(raw, options = {}) {
   if (!server || !fs.existsSync(server)) return null;
   if (!gguf || !ggufLooksComplete(gguf)) return null;
 
-  const ctx = tier.id === "max" ? "32768" : tier.id === "med" ? "16384" : "8192";
+  // CONTEXT WINDOW — this is the single number that decided whether an ambitious
+  // build finished or died. At the old 8k/16k, a real agent run (system contract +
+  // file protocol + every @@READ result + every step's output) overflowed after a
+  // handful of steps and llama.cpp answered HTTP 400 exceed_context_size_error.
+  // Gemma also refuses KV cache shifting under sliding-window attention, so there
+  // is no server-side rescue: the window has to be big enough in the first place.
+  //
+  // q8_0 KV quantisation is what makes the big window affordable — it roughly
+  // halves cache cost against f16 with no measurable quality loss at this size.
+  // Measured on an M4/16 GB: Med at 64k sits at ~3.7 GB RSS on top of mmap'd
+  // weights, which is comfortable. Scaled down on smaller machines rather than
+  // assumed, because a window that doesn't fit is worse than a smaller one.
+  const ctx = String(contextWindowFor(tier.id, totalRamGB(options)));
   const args = [
     "-m", gguf,
     "--host", "127.0.0.1",
     "--port", parsed.port || "8080",
     "-c", ctx,
-    "-ngl", "99",       // offload all layers to Metal/GPU when available
+    "-np", "1",          // one slot owns the whole window (no silent 4-way split)
+    "-ctk", "q8_0",      // quantised KV cache — the big window's affordability
+    "-ctv", "q8_0",
+    // Prompt processing is the agent loop's real tax: every compaction re-reads
+    // the conversation. Measured on M4/16GB with Med, prompt throughput falls off
+    // as the prompt grows (255 tok/s at 4k -> 166 at 8k -> ~119 average over 12k),
+    // so a larger physical batch is worth the compute buffer it costs. This is
+    // also exactly why compaction is rare-and-deep (see LOW_WATER) rather than
+    // little-and-often: the cost is per re-read, not per token appended.
+    "-b", "4096",
+    "-ub", "2048",
+    "-ngl", "99",        // offload all layers to Metal/GPU when available
     "--no-webui",
     "--jinja",           // use the model's own chat template
   ];
@@ -251,9 +274,36 @@ function llamacppLaunchSpec(raw, options = {}) {
     cwd,
     model: gguf,
     tier: tier.id,
+    numCtx: Number(ctx),
     minimumRamGB: tier.minimumRamGB,
     engine: "llamacpp",
   };
+}
+
+function totalRamGB(options = {}) {
+  if (Number.isFinite(options.totalRamGB)) return options.totalRamGB;
+  return os.totalmem() / 1024 ** 3;
+}
+
+/** Ceilings per tier, then the largest window this machine can actually hold.
+    Exported so the renderer budgets against the SAME number the engine was
+    started with — the old code computed a context plan and never sent it. */
+function contextWindowFor(tier, ramGB) {
+  const ceiling = tier === "max" ? 131072 : tier === "med" ? 65536 : 32768;
+  // Weights are mmap'd; this is the headroom left for the KV cache + the user's
+  // own build processes (node/vite) that run DURING a task.
+  const weightsGB = tier === "max" ? 16.5 : tier === "med" ? 7.3 : 3.0;
+  const reserveGB = 3.0;
+  const free = ramGB - weightsGB - reserveGB;
+  // q8_0 KV for these Gemma tiers, measured: ~0.35 GB per 32k on Med (sliding-window
+  // attention keeps all but every 6th layer on a 1k window), ~0.6 GB on Max.
+  const perTokenGB = (tier === "max" ? 0.6 : 0.35) / 32768;
+  const affordable = free > 0 ? Math.floor(free / perTokenGB) : 0;
+  const steps = [131072, 65536, 32768, 16384, 8192, 4096];
+  for (const step of steps) {
+    if (step <= ceiling && step <= affordable) return step;
+  }
+  return 4096;
 }
 
 function mlxLaunchSpec(raw, options = {}) {
@@ -317,6 +367,7 @@ module.exports = {
   GEMMA4_ID,
   GEMMA4_MED_ID,
   MODEL_TIERS,
+  contextWindowFor,
   engineBase,
   ggufLooksComplete,
   hasCachedSnapshot,

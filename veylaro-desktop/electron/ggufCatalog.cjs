@@ -3,8 +3,8 @@
 
    The app bundles the llama.cpp engine (runtime-release/) and downloads these
    GGUF weights on first run — verified by exact size + SHA-256 — into
-   userData/models/<tier>/model.gguf, where llamacppLaunchSpec finds them. No
-   Python, no MLX, no ollama.
+   userData/models/<tier>/model.gguf, where llamacppLaunchSpec finds them.
+   One binary and one weight file — no Python, no third-party model runtime.
 
    Lite (Gemma 4B / E2B) is pinned and shippable now. Med/Max are gated until
    their GGUFs are pinned — the catalog reports them honestly as "coming soon"

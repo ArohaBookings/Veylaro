@@ -12,9 +12,20 @@ npm run app        # Electron window (uses dist/ — run `npm run build` first, 
 npm run dist       # production package; fails closed until signed artifacts exist
 ```
 
-Production packaging requires a self-contained MLX runtime, a strict release
-manifest, hash-pinned model bundles, signing, and notarization. The preflight
-intentionally blocks metadata-only and developer-machine builds.
+`npm run dist:local` builds the ad-hoc-signed artifact we actually ship today
+(right-click -> Open on first launch). `npm run dist` additionally requires an
+Apple Developer ID and notarization credentials; its preflight intentionally
+blocks metadata-only and developer-machine builds.
+
+Either way, `build/afterPack.cjs` now makes the bundled engine self-contained on
+EVERY build and fails the package if it isn't. That check is not optional: the
+engine links its dylibs via @rpath and Homebrew's OpenSSL by absolute path, and
+without rewriting both the downloaded app has a dead engine on any machine that
+isn't the build machine. Verify an engine directory directly with:
+
+```bash
+node build/bundleEngineDeps.cjs runtime-release
+```
 
 ## What's inside
 
@@ -46,11 +57,25 @@ intentionally blocks metadata-only and developer-machine builds.
 
 ## Engine
 
-`src/engine/demo.ts` is the browser-only preview brain. Production inference uses
-the bundled MLX runtime through an OpenAI-compatible localhost API. The desktop
-process starts only an integrity-verified tier artifact and has no Ollama
-protocol fallback. The guarded event loop handles repository reads, edits,
-commands, tests, rollback, and evidence reporting.
+`src/engine/demo.ts` is the browser-only preview brain. Production inference runs
+Veylaro's OWN engine: a bundled llama.cpp binary serving a tier GGUF over an
+OpenAI-compatible localhost API on :8080. No Python, no third-party model runtime.
+The desktop process starts only an integrity-verified tier artifact. The guarded
+event loop handles repository reads, edits, commands, tests, rollback, and
+evidence reporting.
+
+Two things govern how far a run can go, and both used to be silent ceilings:
+
+- **`src/engine/contextBudget.ts`** — the conversation is fitted to the window the
+  engine actually reports at `/props`, counted with the engine's own tokenizer via
+  `/tokenize`. llama.cpp refuses an over-long prompt with HTTP 400
+  (`exceed_context_size_error`) and, under Gemma's sliding-window attention, will
+  not enable KV cache shifting — so nothing but client-side budgeting prevents a
+  long build from dying mid-way. It also normalises roles, because Gemma's template
+  raises on anything but strict user/assistant alternation.
+- **`src/engine/stepBudget.ts`** — the step budget scales with what was asked for
+  and the loop stops on evidence (done / stalled / aborted), never on a turn
+  counter. A full product is allowed hundreds of steps and hours of wall time.
 
 ## State
 

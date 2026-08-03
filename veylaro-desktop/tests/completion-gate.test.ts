@@ -109,8 +109,30 @@ ${"    document.addEventListener('DOMContentLoaded', () => {});\n".repeat(60)}
     document.getElementById('save').addEventListener('click', e => { e.preventDefault(); state.push({name:document.getElementById('name').value}); render(); });
     state = JSON.parse(localStorage.getItem('calls')||'[]'); render();
   </script></body></html>`;
-  const v = assessDeliverable("build a settings screen ui", [{ path: "index.html", content: big }, { path: "styles.css", content: ".x{color:red}\n".repeat(60) }]);
+  // The bar for "a real interface" was raised (320 lines/2 files -> 500/3) because
+  // the old one let outlines through: the owner's measured complaint was a 57-line
+  // "AI receptionist". A genuinely deep interface is markup + styling + behaviour,
+  // which is three files and hundreds of lines — so that is what this fixture is.
+  const v = assessDeliverable("build a settings screen ui", [
+    { path: "index.html", content: big },
+    { path: "styles.css", content: ".x{color:red}\n".repeat(60) },
+    { path: "app.js", content: "export function save(){ localStorage.setItem('k','v'); }\n".repeat(160) },
+  ]);
   assert.equal(v.complete, true, `expected complete, missing: ${v.missing.join(" | ")}`);
+});
+
+test("the raised bar still rejects what the owner actually got", () => {
+  // Both measured in the wild, both previously accepted or nearly so.
+  const stub = assessDeliverable("get started on the ai receptionist ui", [
+    { path: "src/App.tsx", content: "export default () => <h1>AI Receptionist</h1>;" },
+  ]);
+  assert.equal(stub.complete, false, "a 227-byte <h1> is not an AI receptionist");
+
+  const fiftySeven = assessDeliverable("build an ai receptionist ui", [
+    { path: "src/App.tsx", content: "<div className=\"x\"><button onClick={f}>go</button></div>\n".repeat(57) },
+  ]);
+  assert.equal(fiftySeven.complete, false, "57 lines is not an AI receptionist");
+  assert.match(fiftySeven.missing.join(" "), /needs roughly 1500\+ lines/);
 });
 
 test("a small surgical diff on an existing project is legitimately complete", () => {

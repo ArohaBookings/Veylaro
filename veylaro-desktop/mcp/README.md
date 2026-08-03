@@ -23,8 +23,8 @@ run the anti-cheat course, and read back the produced files — repeatably.
 ### `build` arguments
 - `task` (required) — what to build or fix.
 - `tier` — `lite` \| `med` \| `max` (default `med`). Ignored when `model` is set.
-- `model` — pin an exact served model id (e.g. `mlx-community/Qwen2.5-Coder-3B-Instruct-4bit`) to benchmark an alternative base.
-- `endpoint` — engine URL (default: auto-detect `:11434` then `:8080`).
+- `model` — pin an exact served model id (the engine reports the GGUF path) to benchmark an alternative base.
+- `endpoint` — engine URL (default: the Veylaro engine on `:8080`).
 - `dir` — workspace dir (default: an isolated temp dir under the OS temp).
 - `maxSteps` — max model turns (1–16, default 8).
 - `repairTurns` — bounded repair turns on failure (0–4, default 2).
@@ -51,7 +51,7 @@ protocol frames; all logs go to `stderr`.
 
 ## Requirements
 
-- A local OpenAI-compatible engine already running (ollama on `:11434` with the
-  `laro-lite`/`laro-med`/`laro-max` tags, or the MLX server on `:8080`). The MCP
+- The Veylaro engine already running on `:8080` (Veylaro Code starts it, or run
+  the bundled `llama-server` directly against a tier GGUF). The MCP
   never starts or downloads a model — it drives an endpoint that already exists.
 - `tsx` (already a devDependency).
