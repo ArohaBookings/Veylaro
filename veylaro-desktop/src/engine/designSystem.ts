@@ -34,6 +34,56 @@ export function wantsVisualDesign(request: string): boolean {
   return VISUAL_ASK.test(request);
 }
 
+/* ONE DESIGN LANGUAGE FOR EVERY SCREEN IS ITSELF SLOP.
+   Measured: with only the landing-page brief, a "monday.com-style project
+   dashboard" came back with a giant "Welcome Back" hero, a gradient accent word
+   and a version badge pill — landing-page grammar bolted onto a product screen.
+   monday.com has no hero. A dashboard is dense, not spacious; its hierarchy
+   comes from surfaces and density, not from an 84px headline.
+   The brief has to know what KIND of thing it is briefing. */
+export type ArtifactKind = "landing" | "dashboard" | "generic";
+
+export function detectArtifactKind(request: string): ArtifactKind {
+  const r = request.toLowerCase();
+  if (/\b(dashboard|admin|console|panel|board|kanban|crm|erp|analytics|monday|jira|linear|notion|workspace|inbox|table view|back ?office)\b/.test(r)) {
+    return "dashboard";
+  }
+  if (/\b(landing|marketing|hero|homepage|home page|splash|product page|waitlist|coming soon)\b/.test(r)) {
+    return "landing";
+  }
+  return "generic";
+}
+
+const DASHBOARD_BRIEF = `VISUAL BAR — this is a PRODUCT SCREEN, not a marketing page.
+
+A dashboard is dense, calm and legible. It has no hero, no giant headline, no gradient accent word, no version badge, no radial glow. If you find yourself writing "Welcome Back" at 84px you have built the wrong thing. Hierarchy here comes from surfaces, density and restraint.
+
+SHELL
+- Fixed left sidebar, 240–260px, on a slightly raised surface, with the current item clearly active (tinted background, not just bold).
+- Sticky top bar, 56–64px: search on the left of the content area, actions and avatar on the right.
+- The content area scrolls independently and has 24–32px padding. Not 96px — that is marketing spacing.
+
+DENSITY
+- Base font 14–15px, line-height 1.45. Page title 20–24px, section labels 12–13px uppercase with .06em tracking and the muted colour.
+- Cards and rows: 12–16px internal padding, 8–12px gaps. Tight, even, repeatable.
+- Every list row and card gets a hover state — this is an interface people point at.
+
+SURFACES
+- Page #0a0a0b, raised surfaces #141418, hairline borders 1px solid rgba(255,255,255,.08), radius 10–12px.
+- Status and priority are PILLS with semantic colour, and low-opacity backgrounds so they never shout:
+    .pill { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .pill.high { background: rgba(239,68,68,.14); color: #fca5a5; }
+    .pill.med  { background: rgba(245,158,11,.14); color: #fcd34d; }
+    .pill.low  { background: rgba(34,197,94,.14); color: #86efac; }
+- Avatars are CSS circles with initials — never an <img> to a placeholder service.
+
+BOARD
+- Columns are a horizontal flex/grid with equal widths and a column header showing the name and a count.
+- Cards inside a column stack with 10px gaps. Each card: title (15px, heading colour), then a meta row (avatar initial, due date, priority pill) at 12–13px muted.
+
+DATA
+- Write real, plausible task names, dates and names. No "Task 1", no lorem ipsum, no placeholder services.`;
+
 /**
  * The brief. Deliberately specific — every number here is a decision the model
  * would otherwise leave at the browser default, and browser defaults are what
@@ -173,7 +223,8 @@ Before you finish, look at what you wrote and ask: does this look like a product
  * lecture about radial gradients.
  */
 export function designBriefFor(request: string): string {
-  return wantsVisualDesign(request) ? DESIGN_BRIEF : "";
+  if (!wantsVisualDesign(request)) return "";
+  return detectArtifactKind(request) === "dashboard" ? DASHBOARD_BRIEF : DESIGN_BRIEF;
 }
 
 /* ---- grading -------------------------------------------------------------
@@ -294,6 +345,44 @@ const CHECKS: { name: string; test: (css: string) => boolean; weight: number }[]
     } },
 ];
 
+/* A dashboard's quality is density, surfaces and interactivity — not hero
+   grammar. Grading it against the landing rubric is what pushed a "Welcome
+   Back" hero into a project board. */
+const DASHBOARD_CHECKS: { name: string; test: (css: string) => boolean; weight: number }[] = [
+  { name: "dark base colour", weight: 8, test: (c) => {
+      const { bg } = bodyColours(c);
+      const l = bg ? luminance(bg) : null;
+      return l !== null && l < 0.06;
+    } },
+  { name: "raised surfaces for panels/cards", weight: 12, test: (c) =>
+      /background(?:-color)?\s*:\s*#1[0-9a-f]{5}\b|background(?:-color)?\s*:\s*rgba?\(\s*(?:1[6-9]|2[0-9]|3[0-9])\s*,/i.test(c) },
+  { name: "hairline borders", weight: 8, test: (c) =>
+      /border[^:;]*:\s*1px\s+solid\s+rgba\(255,\s*255,\s*255,\s*0?\.\d+\)/i.test(c) },
+  { name: "sidebar with a fixed width", weight: 10, test: (c) =>
+      /\.(?:sidebar|side-nav|nav)[^{]*\{[^}]*width\s*:\s*2[0-9]{2}px/i.test(c) },
+  { name: "compact type scale (14-15px base)", weight: 10, test: (c) => {
+      const m = /body[^{]*\{[^}]*font(?:-size)?\s*:[^;}]*?(\d{2})px/i.exec(c);
+      return !!m && Number(m[1]) >= 13 && Number(m[1]) <= 16;
+    } },
+  { name: "tight, repeatable padding (10-18px)", weight: 10, test: (c) =>
+      /padding\s*:\s*1[0-8]px/i.test(c) },
+  { name: "status/priority pills", weight: 12, test: (c) =>
+      /border-radius\s*:\s*999px|border-radius\s*:\s*9999px|\.(?:pill|tag|badge|chip|status|priority)\b/i.test(c) },
+  { name: "semantic colour with low-opacity backgrounds", weight: 8, test: (c) =>
+      /background[^:;]*:\s*rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0?\.[01]\d?\s*\)/i.test(c) },
+  { name: "hover states on rows and cards", weight: 10, test: (c) => (c.match(/:hover\s*\{/gi) || []).length >= 2 },
+  { name: "transitions", weight: 4, test: (c) => /transition\s*:/i.test(c) },
+  { name: "an active nav state", weight: 8, test: (c) =>
+      /\.(?:active|selected|current)\b[^{]*\{[^}]*background/i.test(c) },
+];
+
+/* Wrong for EVERY kind of screen. */
+const UNIVERSAL_FAILURES: { name: string; test: (css: string) => boolean; penalty: number }[] = [
+  { name: "external placeholder service used instead of real UI", penalty: 20, test: (c) =>
+      /via\.placeholder\.com|placehold\.(?:it|co)|placekitten|picsum\.photos|dummyimage\.com|unsplash\.it/i.test(c) },
+  { name: "lorem ipsum", penalty: 15, test: (c) => /lorem ipsum/i.test(c) },
+];
+
 /* Failures. These are worth more than any single win, because each one is
    visible from across the room and no amount of correct tokens compensates. */
 const FAILURES: { name: string; test: (css: string) => boolean; penalty: number }[] = [
@@ -312,17 +401,23 @@ const FAILURES: { name: string; test: (css: string) => boolean; penalty: number 
 /** Grade what was actually written. Wins add, composition failures subtract —
     and a failure outweighs several wins, because it is visible from across the
     room and no amount of correct tokens compensates for it. */
-export function gradeDesign(rawCss: string): DesignVerdict {
+export function gradeDesign(rawCss: string, kind: ArtifactKind = "landing"): DesignVerdict {
   const css = resolveVars(rawCss);
   const met: string[] = [];
   const missing: string[] = [];
   let score = 0;
-  for (const c of CHECKS) {
+  // A dashboard is graded as a dashboard. Marking it down for lacking an 84px
+  // hero headline is how the landing-page grammar got pushed into it.
+  const checks = kind === "dashboard" ? DASHBOARD_CHECKS : CHECKS;
+  for (const c of checks) {
     if (c.test(css)) { score += c.weight; met.push(c.name); }
     else missing.push(c.name);
   }
   for (const f of FAILURES) {
     if (f.test(css)) { score -= f.penalty; missing.unshift(f.name); }
+  }
+  for (const f of UNIVERSAL_FAILURES) {
+    if (f.test(rawCss)) { score -= f.penalty; missing.unshift(f.name); }
   }
   return { score: Math.max(0, Math.min(100, score)), met, missing };
 }

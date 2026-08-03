@@ -49,7 +49,10 @@ test("the brief is only injected for visual work", () => {
   assert.ok(wantsVisualDesign("an ai receptionist ui"));
   assert.equal(wantsVisualDesign("write a python script to parse csv files"), false);
   assert.equal(designBriefFor("write a csv parser"), "");
-  assert.match(designBriefFor("build a dashboard"), /clamp\(44px, 7vw, 84px\)/);
+  // A dashboard now gets the DASHBOARD brief — asserting it gets the hero type
+  // scale is the exact bug that pushed a "Welcome Back" hero into a task board.
+  assert.match(designBriefFor("build a landing page"), /clamp\(44px, 7vw, 84px\)/);
+  assert.match(designBriefFor("build a dashboard"), /PRODUCT SCREEN, not a marketing page/);
 });
 
 test("the brief bans referencing assets that don't exist", () => {

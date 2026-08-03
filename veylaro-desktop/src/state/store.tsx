@@ -99,7 +99,7 @@ import { continuationPressure, stepPolicy, stopReason } from "../engine/stepBudg
 import { enforcementBrief, isProtocolFailure } from "../engine/protocolEnforcer";
 import { breadthBrief, detectRegression, regressionBrief } from "../engine/progressGuard";
 import { findBrokenReferences, referenceGaps, repairReferences } from "../engine/referenceGate";
-import { designBriefFor, designGaps, gradeDesign, wantsVisualDesign } from "../engine/designSystem";
+import { designBriefFor, designGaps, detectArtifactKind, gradeDesign, wantsVisualDesign } from "../engine/designSystem";
 import { assessShrink } from "../engine/workPreservation";
 import { synthesizeSemanticRepairs } from "../engine/semanticRepair";
 import { explicitlyRequestsTestEdits, isProtectedTestPath } from "../engine/testIntegrity";
@@ -1809,7 +1809,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   .filter(([p]) => /\.(?:css|s[ac]ss|html?|[cm]?[jt]sx)$/i.test(p))
                   .map(([, c]) => c).join("\n");
                 if (styling.trim()) {
-                  const design = gradeDesign(styling);
+                  const design = gradeDesign(styling, detectArtifactKind(text));
                   if (design.score < 60) {
                     stepLine(`Styling scores ${design.score}/100 against the visual bar — missing ${design.missing.slice(0, 3).join(", ")}. Sending it back.`);
                     convo.push({ role: "user", content: designGaps(design).join("\n") });
