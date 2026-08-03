@@ -69,6 +69,34 @@ const PURE_CHAT =
  *   2. A short genuine question that carries no instruction.
  *   3. Nothing else.
  */
+/* A BUILD INSTRUCTION HAS TO SAY SOMETHING.
+
+   The default here is "work", which is right — the user should be able to say
+   anything about the project and have it act. But "work" was applied to bare
+   filler too. Typing "testing" started scaffolding a whole React app; so did
+   "test" and "hmm". The user's words: "i said testing not continue".
+
+   A message is actionable if it has a real verb, or names something to work on,
+   or is long enough to be a description. One or two words with none of that is
+   somebody poking the box, not commissioning a project. */
+const ARTIFACT_NOUN =
+  /\b(ui|ux|app|api|page|site|website|game|saas|form|button|header|footer|nav|menu|modal|table|chart|dashboard|component|screen|layout|style|theme|css|html|script|server|route|endpoint|database|db|schema|login|signup|auth|receptionist|booking|checkout|cart|profile|settings)\b/i;
+
+export function hasActionableSubstance(text: string): boolean {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
+  // A real sentence is a real request, whatever words it uses.
+  if (words.length >= 5) return true;
+  // A genuine verb makes even two words a job: "build minecraft".
+  if (WORK_VERBS.test(text)) return true;
+  // Naming a thing counts, but only alongside another word: "receptionist ui",
+  // not a lone noun that might just be someone thinking out loud.
+  if (words.length >= 2 && ARTIFACT_NOUN.test(text)) return true;
+  // Paths and code are unambiguous.
+  if (/[\\/]|\.[cm]?[jt]sx?\b|\.(?:html?|css|json|py|md)\b/i.test(text)) return true;
+  return false;
+}
+
 export function isFastInteraction(text: string): boolean {
   const clean = text.trim();
   if (!clean) return false;
@@ -84,6 +112,11 @@ export function isFastInteraction(text: string): boolean {
   // A short, genuine question with no instruction in it stays conversation
   // ("what should we build?", "is that possible?").
   if (/\?\s*$/.test(clean) && clean.length < 100) return true;
+
+  // Filler with nothing to act on — "testing", "test", "hmm", "wait" — is not a
+  // commission. Starting a build on these is how a single word became a React
+  // scaffold the user never asked for.
+  if (!hasActionableSubstance(clean)) return true;
 
   // Everything else: do the work.
   return false;

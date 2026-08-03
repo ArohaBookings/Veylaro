@@ -83,7 +83,7 @@ export function deriveBilling(account: Account | null, now: number, online: bool
 import { buildQuestions, buildRun, needsClarification, sideChatReply, simulateTerminal, TimedEvent } from "../engine/demo";
 import { detectLiveModel, ensureLocalEngine, tierFromModelName, veylaroChat, ChatMsg } from "../engine/runtime";
 import { isFastInteraction, looksLikeBuild, looksLikeDebug, wantsToRunApp } from "../engine/intentRouter";
-import { calibrateCasualReply, instantGreetingReply, runtimeFactReply, verifiedArithmeticReply, VerifiedActivity } from "../engine/claimCalibration";
+import { calibrateCasualReply, runtimeFactReply, verifiedArithmeticReply, VerifiedActivity } from "../engine/claimCalibration";
 import {
   FILE_PROTOCOL_PROMPT, StreamParser, salvageFences, resolveInScope, diffCounts,
 } from "../engine/agentLoop";
@@ -981,21 +981,55 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         /** Restore the repository to the exact state before this run. Failed
             execution-gated work never survives on disk. A null snapshot means
             the model created that file, so the rollback bridge removes it. */
-        const rollbackRun = async (reason: string): Promise<boolean> => {
+        /* NEW WORK IS NEVER DELETED.
+         *
+         * runSnapshots stores `null` for a file the run CREATED, and restoring
+         * `null` deletes it. So a rollback wiped out everything the run had
+         * written. The user watched Laro write App.tsx, App.css and a package.json,
+         * stop, and delete all three:
+         *
+         *     rewound to "Stopped run — restored unverified edits"
+         *     Stopped — unverified edits from this run were rolled back
+         *
+         * That is not a rollback, it is throwing away the work. Rollback exists to
+         * protect a repository that ALREADY existed from a half-applied broken
+         * edit — it was never meant to destroy new files, and pressing Stop
+         * certainly does not mean "undo everything you just did for me".
+         *
+         * So: files created during the run are always kept. Only modifications to
+         * pre-existing files are reverted, and only when verification actually
+         * failed. Stopping keeps everything. */
+        const rollbackRun = async (reason: string, opts: { revertModified?: boolean } = {}): Promise<boolean> => {
           if (!runSnapshots.size || runRolledBack) return true;
-          const entries = [...runSnapshots.entries()].reverse();
+          const created = [...runSnapshots.entries()].filter(([, original]) => original === null);
+          const modified = [...runSnapshots.entries()].filter(([, original]) => original !== null);
+
+          if (!opts.revertModified) {
+            runRolledBack = true;
+            if (created.length || modified.length) {
+              appendEvent(sess.id, agentMsg.id, {
+                kind: "step",
+                text: `${reason} — your files were left exactly as they are (${created.length} new, ${modified.length} edited). Nothing was deleted.`,
+              });
+            }
+            return true;
+          }
+
           const failures: string[] = [];
-          for (const [rel, original] of entries) {
+          for (const [rel, original] of modified.reverse()) {
             const abs = resolveInScope(sess.scope, sess.scopeKind, rel);
             const result = await window.veylaro?.restoreFile?.(abs, original, { ...scopedCtx, confirmed: true, rollback: true });
             if (!result?.ok) failures.push(`${rel}: ${result?.error || "restore bridge unavailable"}`);
           }
           if (failures.length) {
-            appendEvent(sess.id, agentMsg.id, { kind: "step", text: `⛔ rollback incomplete — ${failures.slice(0, 2).join("; ")}` });
+            appendEvent(sess.id, agentMsg.id, { kind: "step", text: `⛔ could not restore ${failures.slice(0, 2).join("; ")}` });
             return false;
           }
           runRolledBack = true;
-          appendEvent(sess.id, agentMsg.id, { kind: "restore", label: reason });
+          appendEvent(sess.id, agentMsg.id, {
+            kind: "restore",
+            label: `${reason} — reverted ${modified.length} edited file(s); the ${created.length} new file(s) were kept`,
+          });
           return true;
         };
 
@@ -1117,14 +1151,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             // must stay instant even when the model is cold, and a runtime
             // identity answer must come from the detected endpoint rather than
             // a configured alias.
+            // EVERYTHING THE USER SAYS GOES THROUGH THE MODEL.
+            // The scripted greeting ("Hey. What are we working on?", tagged
+            // "no generation needed") made Laro feel like a phone tree. It is gone:
+            // say hello and the model answers you.
+            // Two things stay deterministic on purpose, and neither is conversation:
+            // which model is loaded (a local checkpoint cannot know its own product
+            // name, so asking it invites a confident lie) and arithmetic (verified,
+            // never guessed). Both are facts about the runtime, not chat.
             if (fastPath) {
               const detectedTier = tierFromModelName(liveModel || "");
               const instant = runtimeFactReply(
                 text,
                 liveModel,
                 detectedTier ? MODELS[detectedTier].name : modelName,
-              ) || instantGreetingReply(text, stRef.current.account?.name)
-                || verifiedArithmeticReply(text);
+              ) || verifiedArithmeticReply(text);
               if (instant) {
                 appendEvent(sess.id, agentMsg.id, { kind: "say", plain: instant, dev: "deterministic verified path · no generation needed" });
                 finishRun();
@@ -1777,7 +1818,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               }
             }
             if (verification === "failed") {
-              await rollbackRun("Rejected failing run — restored the project to its pre-run state");
+              await rollbackRun("Verification failed", { revertModified: true });
             }
 
             // Open the result before the recap so the summary never claims a Viewport
@@ -1792,7 +1833,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               const names = [...new Set(writtenPaths)];
               const list = names.slice(0, 6).join(", ") + (names.length > 6 ? `, +${names.length - 6} more` : "");
               const title = runRolledBack
-                ? "Rejected and rolled back"
+                ? "Stopped — your files were kept"
                 : verification === "passed"
                 ? "Completed and verified"
                 : verification === "failed"
@@ -1856,11 +1897,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               });
             }
           } catch (e: any) {
-            const restored = await rollbackRun(signal.aborted
-              ? "Stopped run — restored unverified edits"
-              : "Errored run — restored unverified edits");
+            // Stopping is not undoing. Keep everything on abort; on a genuine
+            // error, revert edits to files that already existed but keep new work.
+            const restored = await rollbackRun(
+              signal.aborted ? "Stopped" : "Run hit an error",
+              { revertModified: !signal.aborted },
+            );
             if (signal.aborted) {
-              appendEvent(sess.id, agentMsg.id, { kind: "say", plain: restored ? "Stopped — unverified edits from this run were rolled back." : "Stopped, but the rollback could not be fully proven. Review the changed files before continuing.", dev: "run aborted by user" });
+              appendEvent(sess.id, agentMsg.id, { kind: "say", plain: restored ? "Stopped. Everything written so far is still on disk — nothing was deleted." : "Stopped. Your files are unchanged from where the run got to.", dev: "run stopped" });
             } else {
               appendEvent(sess.id, agentMsg.id, {
                 kind: "say",
@@ -2125,20 +2169,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
 
       (async () => {
-        // Find a live local engine, independent of the main build-engine toggle:
-        // the configured URL first, then the usual local endpoints.
-        const urls = [...new Set([st.settings.engineUrl, "http://127.0.0.1:8080"])].filter(Boolean);
+        // START the engine, don't just look for one.
+        //
+        // This used to probe /v1/models and, finding nothing, tell the user to
+        // "Start Veylaro's engine" — inside Veylaro. The app owns that engine and
+        // starts it on demand everywhere else; the side chat was the one place
+        // that gave up and blamed the user. It also meant the panel claimed the
+        // model was unreachable while the main agent was happily using it.
         let url = "";
         let model = "";
-        for (const u of urls) {
-          try {
-            const m = await detectLiveModel(u);
-            if (m) { url = u; model = m; break; }
-          } catch { /* try next */ }
+        let startError = "";
+        try {
+          const ready = await ensureLocalEngine(st.settings.engineUrl, st.settings.engineModel, st.settings.model);
+          if (ready.ok) {
+            url = ready.url || st.settings.engineUrl;
+            model = ready.model || st.settings.engineModel;
+          } else {
+            startError = ready.error || "";
+          }
+        } catch (e: any) {
+          startError = String(e?.message || e);
+        }
+        // Fall back to a plain probe for an endpoint we don't own (browser
+        // preview has no bridge to start anything).
+        if (!url) {
+          for (const u of [...new Set([st.settings.engineUrl, "http://127.0.0.1:8080"])].filter(Boolean)) {
+            try {
+              const m = await detectLiveModel(u);
+              if (m) { url = u; model = m; break; }
+            } catch { /* try next */ }
+          }
         }
         if (!url) {
           setReply({
-            text: "I can't reach a local model right now, so I won't fake an answer. Start Veylaro's engine (or launch a model) and I'll think for real — this window is chat + web only.",
+            text: startError
+              ? `I couldn't start Laro just now, so I won't fake an answer. ${startError}`
+              : "I couldn't start Laro just now, so I won't fake an answer. Check Settings → Models that a tier is downloaded, and that this Mac has memory free.",
             streaming: false,
           });
           return;
