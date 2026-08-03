@@ -123,3 +123,28 @@ test("the gap text explains why a dead page is dead", () => {
   assert.match(gaps.join(" "), /does not resolve from that file's own location/);
   assert.match(gaps.join(" "), /dead page/);
 });
+
+test("the gate runs BEFORE any branch that can skip it", async () => {
+  // First wiring attempt put the gate after the collapsed-output, failed-command
+  // and observations branches — every one of which `continue`s. A real run hit
+  // "output collapsed into repetition" and sailed straight past the gate, so the
+  // dead page shipped anyway. Placement is the whole fix; pin it.
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const store = fs.readFileSync(path.join(root, "src", "state", "store.tsx"), "utf8");
+
+  const gate = store.indexOf("REFERENCE RESOLUTION GATE");
+  assert.ok(gate > 0, "the gate must be wired into the loop");
+
+  for (const skipper of [
+    "if (collapsed && step < maxSteps)",
+    "if (failedCmd && step < maxSteps)",
+    "if (observations.length && step < maxSteps)",
+  ]) {
+    const at = store.indexOf(skipper);
+    assert.ok(at > 0, `expected branch missing: ${skipper}`);
+    assert.ok(gate < at, `the gate must precede "${skipper}" — that branch continues past it`);
+  }
+});

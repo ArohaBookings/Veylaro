@@ -1608,6 +1608,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               if (cleanNarration) lastNarration = cleanNarration;
               observations.push(...writeFeedback.splice(0));
 
+              // REFERENCE RESOLUTION GATE — runs on EVERY step, before any of the
+              // branches below can `continue` past it. A page whose stylesheet and
+              // script don't load is dead however good the code inside them is:
+              // measured, a build produced three correct files and a blank page
+              // because index.html, living inside receptionist/, referenced
+              // "receptionist/style.css". Unambiguous fixes are applied here rather
+              // than spending a model turn at ~11 tok/s on the model's own typo.
+              if (deliverable.size && canWrite) {
+                const fix = repairReferences([...deliverable].map(([p, c]) => ({ path: p, content: c })));
+                for (const file of fix.files) {
+                  if (deliverable.get(file.path) !== file.content) {
+                    await writeOne(file.path, file.content, { silent: true });
+                  }
+                }
+                for (const note of fix.repaired) stepLine(`🔗 fixed a broken reference — ${note}`);
+                if (fix.unresolved.length) {
+                  observations.push(
+                    "These references do not resolve, so the page will not work:\n" +
+                    referenceGaps(fix.unresolved).map((g) => `- ${g}`).join("\n"),
+                  );
+                }
+              }
+
               convo.push({ role: "assistant", content: raw });
               if (wroteThisStep > 0 || ranThisStep > 0) consecutiveIdle = 0;
               if (signal.aborted) break;
@@ -1672,32 +1695,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   : `still nothing saved (${consecutiveIdle}) — narrowing to a single file`);
                 convo.push({ role: "user", content: brief });
                 continue;
-              }
-
-              // REFERENCE RESOLUTION GATE.
-              // A page whose stylesheet and script don't load is dead, however good
-              // the code inside them is — measured: a build produced three correct
-              // files and a completely blank page because index.html, living inside
-              // receptionist/, referenced "receptionist/style.css". Every other gate
-              // passed it. Unambiguous fixes are applied here rather than spending a
-              // model turn; anything ambiguous goes back to the model as a gap.
-              if (deliverable.size) {
-                const project = [...deliverable].map(([p, c]) => ({ path: p, content: c }));
-                const fix = repairReferences(project);
-                if (fix.repaired.length) {
-                  for (const file of fix.files) {
-                    if (deliverable.get(file.path) !== file.content) {
-                      await writeOne(file.path, file.content, { silent: true });
-                    }
-                  }
-                  for (const note of fix.repaired) stepLine(`🔗 fixed a broken reference — ${note}`);
-                }
-                if (fix.unresolved.length && step < maxSteps) {
-                  convo.push({ role: "user", content:
-                    "These references do not resolve, so the page will not work:\n" +
-                    referenceGaps(fix.unresolved).map((g) => `- ${g}`).join("\n") });
-                  continue;
-                }
               }
 
               // Going backwards is its own failure mode and needs its own answer:
