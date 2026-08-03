@@ -72,6 +72,31 @@ export function ambitionFloor(request: string): { lines: number; files: number; 
   return { lines: 150, files: 1, label: "A working result" };
 }
 
+/* FILLER IS NOT PROGRESS.
+   A file that exists only to exist — a component that renders its own name and
+   a sentence describing itself — must not count toward the file floor, or the
+   floor becomes an instruction to manufacture stubs. Observed verbatim:
+
+       function Module20() {
+         return (<div><h2>Module 20</h2>
+           <p>This module displays a simple heading.</p>
+           <h1>A Simple Heading</h1></div>);
+       }
+*/
+const SELF_DESCRIBING = /<h[1-6]>\s*(?:Module|Component|Section|Part)\s*\d+\s*<\/h[1-6]>|this (?:module|component|section) (?:displays|shows|renders|contains)/i;
+
+export function isFillerFile(file: DeliverableFile): boolean {
+  const lines = codeLines(file.content);
+  if (lines > 40) return false;              // substantial enough to be real
+  if (SELF_DESCRIBING.test(file.content)) return true;
+  // A numbered module with no imports of its own and no behaviour.
+  if (/\b(?:Module|Component|Part)\d+\b/.test(file.content)
+      && !/(?:useState|onClick|onChange|onSubmit|fetch\(|addEventListener|export function [a-z])/i.test(file.content)) {
+    return true;
+  }
+  return false;
+}
+
 function codeLines(content: string): number {
   return content
     .split("\n")
@@ -106,7 +131,17 @@ export function assessDeliverable(
     return { complete: false, missing: ["No file was written at all."], reason: "nothing was produced" };
   }
 
-  const totalCode = files.reduce((n, f) => n + codeLines(f.content), 0);
+  // Filler is excluded from BOTH counts, so manufacturing stubs can never move
+  // the gate closer to satisfied — the only way past it is real work.
+  const filler = files.filter(isFillerFile);
+  const real = files.filter((f) => !isFillerFile(f));
+  if (filler.length) {
+    missing.push(
+      `${filler.length} file(s) are placeholders that only describe themselves (${filler.slice(0, 3).map((f) => f.path).join(", ")}). ` +
+      `Delete them or make them real. Never create a file just to have another file.`,
+    );
+  }
+  const totalCode = real.reduce((n, f) => n + codeLines(f.content), 0);
   const joined = files.map((f) => f.content).join("\n");
   const wantsUI = UI_REQUEST.test(request);
   const wantsScale = APP_SCALE.test(request);
@@ -123,9 +158,9 @@ export function assessDeliverable(
   // is thousands of lines, a real interface is hundreds. Anything less is an outline.
   if (!opts.existingProject) {
     const bar = ambitionFloor(request);
-    if (totalCode < bar.lines || files.length < bar.files) {
+    if (totalCode < bar.lines || real.length < bar.files) {
       missing.push(
-        `Only ${totalCode} lines across ${files.length} file(s). ${bar.label} needs roughly ${bar.lines}+ lines across ${bar.files}+ files. ` +
+        `Only ${totalCode} lines across ${real.length} real file(s). ${bar.label} needs roughly ${bar.lines}+ lines across ${bar.files}+ files. ` +
           `Keep building: add the remaining screens, components, states, data, validation, empty/loading/error handling and styling. Do not stop at an outline.`,
       );
     }

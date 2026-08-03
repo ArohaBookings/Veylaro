@@ -94,7 +94,7 @@ import { evidenceBudget, EXECUTION_LATTICE_PROMPT } from "../engine/executionLat
 import { cleanAssistantText, collapseReason, isPresentableNarration } from "../engine/outputHygiene";
 import { extractRepairFiles } from "../engine/repairCandidates";
 import { liteReinforced, canSyntaxCheck, checkInProcess } from "../engine/liteBoost";
-import { ambitionFloor, assessDeliverable, continuationBrief } from "../engine/completionGate";
+import { ambitionFloor, assessDeliverable, continuationBrief, isFillerFile } from "../engine/completionGate";
 import { continuationPressure, stepPolicy, stopReason } from "../engine/stepBudget";
 import { enforcementBrief, isProtocolFailure } from "../engine/protocolEnforcer";
 import { breadthBrief, detectRegression, regressionBrief } from "../engine/progressGuard";
@@ -930,6 +930,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // another stub. Refusing keeps the full version on disk, so the next
           // attempt starts from it. `opts.silent` writes are ours (the reference
           // repair), never the model's, so they bypass this.
+          // NO FILLER ON DISK. A component that renders its own name and a
+          // sentence describing itself is not work — it is the model satisfying a
+          // file count. Observed: Module12…Module28, seventeen of them. Refuse the
+          // write so the project never accumulates them in the first place.
+          if (!opts.silent && isFillerFile({ path: rel, content })) {
+            writeFeedback.push(
+              `EDIT ${rel}: refused — that file only describes itself. Do not create a file to have another file. ` +
+              `Build real functionality into the files that already exist, or write something the project actually needs.`,
+            );
+            appendEvent(sess.id, agentMsg.id, { kind: "step", text: `🚫 refused ${rel} — placeholder file, not real work` });
+            return false;
+          }
           if (!opts.silent) {
             const shrink = assessShrink(rel, old, content);
             if (shrink.destructive) {

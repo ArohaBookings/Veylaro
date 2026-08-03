@@ -146,6 +146,16 @@ export function nextPart(request: string, existingPaths: readonly string[]): str
   for (const candidate of [...(table?.parts ?? []), ...GENERIC_PARTS]) {
     if (!have.has(candidate.toLowerCase())) return candidate;
   }
+  // NOTHING MEANINGFUL LEFT TO NAME -> ASK FOR NOTHING.
+  //
+  // This used to fall through to `src/Module${n}.tsx`, and the model dutifully
+  // produced them: Module12 "displays a list of items", Module20 "displays a
+  // simple heading", all the way to Module28. Seventeen meaningless files,
+  // generated purely to satisfy a file COUNT. That is slop, and this function
+  // was manufacturing it.
+  //
+  // A number is not a design. When there is no real part left to suggest, the
+  // caller must ask for DEPTH in what exists, never another file.
   return null;
 }
 
