@@ -43,6 +43,9 @@ import { compactFailureEvidence, diagnoseFailure } from "../src/engine/failureKe
 import { classifyModelCommand } from "../src/engine/commandPolicy.ts";
 import { assessDeliverable, continuationBrief } from "../src/engine/completionGate.ts";
 import { stepPolicy } from "../src/engine/stepBudget.ts";
+import { enforcementBrief, isProtocolFailure } from "../src/engine/protocolEnforcer.ts";
+import { breadthBrief, detectRegression, regressionBrief } from "../src/engine/progressGuard.ts";
+import { ambitionFloor } from "../src/engine/completionGate.ts";
 import type { ModelId } from "../src/types.ts";
 
 const SERVER = { name: "veylaro-code", version: "0.1.0" };
@@ -230,7 +233,11 @@ async function headlessBuild(args: BuildArgs) {
   const started = Date.now();
 
   let sawDone = false;
+  let idleStreak = 0;
   for (let step = 0; step < maxSteps && !sawDone; step++) {
+    const beforeStep = new Map(
+      [...written.keys()].map((rel) => [rel, readIfExists(path.join(scope, rel)) ?? ""] as const),
+    );
     const parser = new StreamParser();
     let raw = "";
     const reads: string[] = [];
@@ -242,13 +249,18 @@ async function headlessBuild(args: BuildArgs) {
       else if (ev.t === "read") reads.push(ev.path);
       else if (ev.t === "run") runs.push(ev.cmd);
       else if (ev.t === "done") sawDone = true;
-      else if (ev.t === "file") {
+      else if (ev.t === "file" || ev.t === "append") {
         const abs = resolveInScope(scope, "folder", ev.path);
         if (!abs.startsWith(scope)) return; // scope guard — never escape the workspace
         const old = readIfExists(abs);
-        const d = diffCounts(old, ev.content);
+        // An @@APPEND that fell through to nothing was a silently ignored edit:
+        // the model did the work, the harness dropped it, and the step looked idle.
+        const next = ev.t === "append" && old
+          ? `${old.replace(/\s*$/, "")}\n\n${ev.content}`
+          : ev.content;
+        const d = diffCounts(old, next);
         fs.mkdirSync(path.dirname(abs), { recursive: true });
-        fs.writeFileSync(abs, ev.content);
+        fs.writeFileSync(abs, next);
         const rel = path.relative(scope, abs);
         written.set(rel, d);
         filesThisStep.push(rel);
@@ -321,11 +333,48 @@ async function headlessBuild(args: BuildArgs) {
     if (sawDone) break;
     if (feedback.length) {
       messages.push({ role: "user", content: feedback.join("\n\n") });
-    } else if (filesThisStep.length === 0) {
-      break; // no progress and nothing to feed back — stop rather than spin
-    } else {
-      messages.push({ role: "user", content: "Continue. If the entire task is complete and every file is written, output @@DONE." });
+      continue;
     }
+
+    const onDiskNow = [...written.keys()].map((rel) => ({
+      path: rel,
+      content: readIfExists(path.join(scope, rel)) ?? "",
+    }));
+    const liveVerdict = assessDeliverable(args.task, onDiskNow, { existingProject });
+
+    // AN IDLE STEP IS A PROTOCOL FAILURE, NOT THE END OF THE RUN.
+    // This harness used to `break` the moment a step wrote nothing, so a single
+    // prose reply ended the whole build — and a headless benchmark then reported
+    // the product stopping far earlier than it actually does. Same escalating
+    // enforcement the app uses.
+    if (isProtocolFailure(filesThisStep.length, runs.length)) {
+      idleStreak += 1;
+      if (idleStreak > 3) break;
+      messages.push({ role: "user", content: enforcementBrief({
+        request: args.task,
+        missing: liveVerdict.missing,
+        existingPaths: [...written.keys()],
+        attempt: idleStreak,
+      }) });
+      continue;
+    }
+    idleStreak = 0;
+
+    const regression = detectRegression(beforeStep, new Map(onDiskNow.map((f) => [f.path, f.content])));
+    if (regression.regressed) {
+      messages.push({ role: "user", content: regressionBrief(regression) });
+      continue;
+    }
+
+    if (!liveVerdict.complete) {
+      const wantsMoreFiles = /across \d+\+ files|several real screens|product surface/i.test(liveVerdict.missing.join(" "));
+      const breadth = wantsMoreFiles
+        ? breadthBrief(args.task, [...written.keys()], ambitionFloor(args.task).files)
+        : null;
+      messages.push({ role: "user", content: breadth ?? continuationBrief(liveVerdict) });
+      continue;
+    }
+    messages.push({ role: "user", content: "Continue. If the entire task is complete and every file is written, output @@DONE." });
   }
 
   // Deterministic verification pass (re-derive commands now that files exist).
