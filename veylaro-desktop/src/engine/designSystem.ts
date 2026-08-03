@@ -87,6 +87,7 @@ THE FOUR WAYS THIS GOES WRONG — all four have been measured, do not repeat the
      .hero { background: linear-gradient(135deg,#a78bfa,#6366f1); }   /* wrong */
 
 2. INVISIBLE TEXT. #141418 is a SURFACE colour, never a text colour. On a #0a0a0b page that is dark grey on near-black and cannot be read. Body text is #a1a1aa, headings are #ffffff. Check every colour pair you write.
+   This includes SECTION headings: h2 and h3 must be given the heading colour explicitly. If you only set the muted colour on body, every h2 silently inherits that muted tone and the page reads as one flat grey wash with no hierarchy.
 
 3. EVERYTHING CENTRED. Centre the hero headline if you like. Body paragraphs, feature cards and footers are LEFT-aligned. Three or more "text-align: center" rules means you centred things that should not be.
 
@@ -149,6 +150,8 @@ h1 .accent {                          /* THE GRADIENT LIVES HERE — one word */
 .btn-ghost:hover { background: rgba(255,255,255,.05); }
 
 .features { padding: 112px 0; }
+h2 { margin: 0 0 40px; font-size: clamp(28px, 3.4vw, 40px); font-weight: 700;
+     line-height: 1.1; letter-spacing: -.02em; color: var(--heading); }  /* headings are NEVER the muted body colour */
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
 .card { padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
 .card h3 { margin: 0 0 8px; color: var(--heading); font-size: 18px; letter-spacing: -.01em; }
@@ -276,6 +279,19 @@ const CHECKS: { name: string; test: (css: string) => boolean; weight: number }[]
   { name: "transitions", weight: 4, test: (c) => /transition\s*:/i.test(c) },
   { name: "responsive breakpoint", weight: 6, test: (c) => /@media[^{]*\((?:max|min)-width/i.test(c) },
   { name: "subtle borders", weight: 4, test: (c) => /border\s*:\s*1px\s+solid\s+rgba\(255,\s*255,\s*255,\s*0?\.\d+\)/i.test(c) },
+  // Section headings must be given a colour of their own. Without this they
+  // inherit the muted body tone and the page reads as one flat grey wash —
+  // measured: .features h2 came out rgb(161,161,170) on a real build because
+  // the worked example never set it.
+  { name: "section headings (h2) given a heading colour", weight: 6, test: (c) => {
+      // Must be h2 specifically. The first version accepted ANY h2/h3 rule with a
+      // colour, so a page passed on `.card h3 { color: … }` while every section
+      // h2 still inherited the muted body tone — measured rgb(161,161,170) on a
+      // real build that then scored 90. Nearly accepted it.
+      const h2Blocks = [...c.matchAll(/([^{}]*\bh2\b[^{}]*)\{([^}]*)\}/gi)];
+      if (!h2Blocks.length) return false;
+      return h2Blocks.some(([, , body]) => /(?:^|[;{])\s*color\s*:/i.test(body));
+    } },
 ];
 
 /* Failures. These are worth more than any single win, because each one is

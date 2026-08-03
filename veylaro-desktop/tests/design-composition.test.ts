@@ -67,3 +67,38 @@ test("the brief names all four measured failure modes", () => {
   assert.match(DESIGN_BRIEF, /NOTES IN THE FILE/);
   assert.match(DESIGN_BRIEF, /#141418 is a SURFACE colour, never a text colour/);
 });
+
+test("a muted section heading is caught, not waved through", () => {
+  // MEASURED: a real build scored 90/100 with "nothing missing" while every
+  // section h2 computed to rgb(161,161,170) — the muted BODY colour. The check
+  // accepted any h2-or-h3 rule with a colour, so it passed on `.card h3` while
+  // the actual section headings stayed grey. A page with no heading hierarchy
+  // reads as one flat wash, which is exactly the "slop" complaint.
+  const cardH3Only = `
+    body { background: #0a0a0b; color: #a1a1aa; }
+    .card h3 { color: #ffffff; }
+  `;
+  assert.ok(
+    gradeDesign(cardH3Only).missing.some((m) => /section headings \(h2\)/.test(m)),
+    "an h3 rule must not satisfy the h2 requirement",
+  );
+
+  const withH2 = cardH3Only + `\nh2 { color: #ffffff; font-size: 40px; }`;
+  assert.ok(
+    !gradeDesign(withH2).missing.some((m) => /section headings \(h2\)/.test(m)),
+    "an explicit h2 colour satisfies it",
+  );
+});
+
+test("the worked example itself sets an h2 colour", () => {
+  // The model copies the example faithfully — including its omissions. The
+  // example failing to set h2 is what produced the grey headings in the build.
+  const m = DESIGN_BRIEF.match(/:root \{[\s\S]*?@media \(max-width: 640px\) \{[\s\S]*?\}\s*\}/);
+  assert.ok(m, "the worked example must be present in the brief");
+  const g = gradeDesign(m![0]);
+  assert.ok(
+    !g.missing.some((x) => /section headings \(h2\)/.test(x)),
+    "the example must not teach the omission it is meant to prevent",
+  );
+  assert.ok(g.score >= 85, `the example should be exemplary, scored ${g.score}`);
+});
