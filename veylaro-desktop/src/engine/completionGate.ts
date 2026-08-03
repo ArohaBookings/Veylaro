@@ -15,6 +15,8 @@
    specific, objective shortfall. It never demands work the user didn't ask for.
    ============================================================ */
 
+import { findBrokenReferences, referenceGaps } from "./referenceGate";
+
 export interface DeliverableFile {
   path: string;
   content: string;
@@ -94,6 +96,11 @@ export function assessDeliverable(
   opts: { existingProject?: boolean } = {},
 ): CompletionVerdict {
   const missing: string[] = [];
+
+  // A project whose own files can't find each other is not complete, at any
+  // size. This check is independent of scale, so it applies to a one-line edit
+  // in an existing repo just as much as to a fresh build.
+  missing.push(...referenceGaps(findBrokenReferences(files)));
 
   if (!files.length) {
     return { complete: false, missing: ["No file was written at all."], reason: "nothing was produced" };

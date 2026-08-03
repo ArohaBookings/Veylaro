@@ -16,13 +16,16 @@ function portIsFree(port) {
 }
 
 test("a held port is detected as unavailable and a neighbour is found", async () => {
+  // Bind an ephemeral port so this test can never collide with a real Veylaro
+  // engine (or anything else) that happens to be running on the dev machine.
   const blocker = net.createServer();
-  await new Promise((r) => blocker.listen(8080, "127.0.0.1", r));
+  await new Promise((r) => blocker.listen(0, "127.0.0.1", r));
+  const held = blocker.address().port;
   try {
-    assert.equal(await portIsFree(8080), false, "8080 is held, must report unavailable");
+    assert.equal(await portIsFree(held), false, `${held} is held, must report unavailable`);
     let found = 0;
-    for (let p = 8080; p < 8092; p++) { if (await portIsFree(p)) { found = p; break; } }
-    assert.ok(found > 8080, `must step around the held port (found ${found})`);
+    for (let p = held; p < held + 12; p++) { if (await portIsFree(p)) { found = p; break; } }
+    assert.ok(found > held, `must step around the held port (found ${found})`);
   } finally {
     await new Promise((r) => blocker.close(r));
   }
