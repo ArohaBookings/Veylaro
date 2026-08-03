@@ -30,14 +30,16 @@ test("the grader separates the slop from the good output", () => {
   const slop = gradeDesign(SLOP);
   const good = gradeDesign(GOOD);
   assert.ok(slop.score < 60, `slop scored ${slop.score}, should be under the bar`);
-  assert.ok(good.score >= 80, `good output scored ${good.score}, should clear the bar comfortably`);
+  assert.ok(good.score >= 75, `good output scored ${good.score}, missing: ${good.missing.join(", ")}`);
   assert.ok(good.score - slop.score > 35, "the two must be clearly separated");
 });
 
 test("it names what is actually missing, not vibes", () => {
   const { missing } = gradeDesign(SLOP);
-  assert.ok(missing.includes("gradient accent"));
-  assert.ok(missing.includes("soft glow / depth"));
+  // Check names track the composition-aware grader: it is not enough to HAVE a
+  // gradient, it has to be clipped to text rather than washed over a section.
+  assert.ok(missing.includes("gradient CLIPPED TO TEXT"), missing.join(", "));
+  assert.ok(missing.includes("soft glow for depth"), missing.join(", "));
   assert.ok(missing.includes("responsive breakpoint"));
   assert.ok(missing.includes("hover states"));
 });

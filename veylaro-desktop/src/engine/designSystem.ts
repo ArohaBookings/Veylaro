@@ -77,6 +77,90 @@ RULES
 - Ship the styling in a real stylesheet, not a handful of inline styles.
 - Responsive: it must not break at 390px wide.
 
+THE FOUR WAYS THIS GOES WRONG — all four have been measured, do not repeat them:
+
+1. GRADIENT ON THE WHOLE HERO. Putting the gradient on .hero / section / body paints a big purple rectangle and instantly looks generated. The hero background stays DARK. The gradient goes on ONE WORD of the headline, clipped:
+     .hero { background: #0a0a0b; }                     /* right */
+     .headline .accent { background: linear-gradient(135deg,#a78bfa,#6366f1);
+       -webkit-background-clip: text; background-clip: text; color: transparent; }
+   Not:
+     .hero { background: linear-gradient(135deg,#a78bfa,#6366f1); }   /* wrong */
+
+2. INVISIBLE TEXT. #141418 is a SURFACE colour, never a text colour. On a #0a0a0b page that is dark grey on near-black and cannot be read. Body text is #a1a1aa, headings are #ffffff. Check every colour pair you write.
+
+3. EVERYTHING CENTRED. Centre the hero headline if you like. Body paragraphs, feature cards and footers are LEFT-aligned. Three or more "text-align: center" rules means you centred things that should not be.
+
+4. NOTES IN THE FILE. Never leave research links, URLs, TODOs or "here's what I'm thinking" comments in a stylesheet you ship.
+
+WORKED EXAMPLE — copy this structure exactly, change the colours/copy to suit the product.
+This is the shape that works. Do not deviate from where the gradient goes.
+
+:root {
+  --bg: #0a0a0b;
+  --surface: #141418;
+  --text: #a1a1aa;
+  --heading: #ffffff;
+  --accent-a: #a78bfa;
+  --accent-b: #6366f1;
+  --line: rgba(255,255,255,.08);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);            /* DARK. never a gradient here */
+  color: var(--text);               /* muted, so headings dominate */
+  font: 400 17px/1.6 -apple-system, "Segoe UI", Inter, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+
+.hero { position: relative; padding: 128px 0 112px; overflow: hidden; background: var(--bg); }
+.hero::after {                       /* the glow — this is the ONLY background gradient */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(620px circle at 72% 28%, rgba(99,102,241,.20), transparent 62%);
+}
+.hero .wrap { position: relative; z-index: 1; }
+
+.badge {
+  display: inline-block; margin-bottom: 24px;
+  padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px;
+  font-size: 12px; letter-spacing: .01em; color: var(--heading);
+  background: rgba(255,255,255,.03);
+}
+
+h1 {
+  margin: 0 0 20px;
+  font-size: clamp(44px, 7vw, 84px); font-weight: 800;
+  line-height: 1.02; letter-spacing: -.03em; color: var(--heading);
+  max-width: 15ch;
+}
+h1 .accent {                          /* THE GRADIENT LIVES HERE — one word */
+  background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.sub { margin: 0 0 40px; max-width: 46ch; font-size: 18px; }  /* left-aligned */
+
+.cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.btn { padding: 13px 22px; border-radius: 10px; font-weight: 600; font-size: 15px;
+       text-decoration: none; transition: all .2s ease; border: 1px solid transparent; }
+.btn-primary { background: var(--heading); color: #0a0a0b; }
+.btn-primary:hover { transform: translateY(-1px); opacity: .92; }
+.btn-ghost { background: transparent; color: var(--heading); border-color: var(--line); }
+.btn-ghost:hover { background: rgba(255,255,255,.05); }
+
+.features { padding: 112px 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+.card { padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.card h3 { margin: 0 0 8px; color: var(--heading); font-size: 18px; letter-spacing: -.01em; }
+.card p { margin: 0; font-size: 15px; }
+
+footer { padding: 56px 0; border-top: 1px solid var(--line); font-size: 14px; }
+
+@media (max-width: 640px) {
+  .hero { padding: 80px 0 64px; }
+  h1 { font-size: 40px; }
+}
+
 Before you finish, look at what you wrote and ask: does this look like a product someone paid for, or like an unstyled form? If it's the second one, it isn't done.`;
 
 /**
@@ -101,31 +185,130 @@ export interface DesignVerdict {
   missing: string[];
 }
 
-const CHECKS: { name: string; test: RegExp; weight: number }[] = [
-  { name: "dark base colour", test: /background(?:-color)?\s*:\s*(?:#0[0-9a-f]{2,5}\b|#1[0-4][0-9a-f]{1,4}\b|rgb\(\s*(?:[0-9]|1[0-9]|2[0-5])\s*,)/i, weight: 10 },
-  { name: "large fluid headline", test: /font-size\s*:\s*clamp\(|font-size\s*:\s*(?:[4-9]\d|\d{3})px|font-size\s*:\s*[3-9](?:\.\d+)?rem/i, weight: 14 },
-  { name: "tightened heading tracking", test: /letter-spacing\s*:\s*-\s*0?\.\d+(?:em|px|rem)/i, weight: 8 },
-  { name: "gradient accent", test: /linear-gradient\([^)]*\)/i, weight: 12 },
-  { name: "gradient text clip", test: /background-clip\s*:\s*text|-webkit-background-clip\s*:\s*text/i, weight: 8 },
-  { name: "soft glow / depth", test: /radial-gradient\(|box-shadow\s*:\s*[^;]*rgba/i, weight: 8 },
-  { name: "generous section spacing", test: /padding\s*:\s*(?:[6-9]\d|1\d{2})px|padding(?:-block|-top|-bottom)?\s*:\s*(?:[4-9](?:\.\d+)?rem|\d{2,}(?:\.\d+)?rem)/i, weight: 10 },
-  { name: "centred max-width container", test: /max-width\s*:\s*(?:[89]\d{2}|1[0-4]\d{2})px[\s\S]{0,120}margin\s*:\s*0\s+auto|margin\s*:\s*0\s+auto[\s\S]{0,120}max-width\s*:\s*(?:[89]\d{2}|1[0-4]\d{2})px/i, weight: 8 },
-  { name: "muted body text", test: /color\s*:\s*(?:#[89ab][0-9a-f]{2,5}\b|rgba?\(\s*(?:1[5-9]\d|2[0-4]\d)\s*,[^)]*0?\.[3-8]\s*\))/i, weight: 6 },
-  { name: "hover states", test: /:hover\s*\{/i, weight: 6 },
-  { name: "transitions", test: /transition\s*:/i, weight: 4 },
-  { name: "responsive breakpoint", test: /@media[^{]*\((?:max|min)-width/i, weight: 6 },
+/* PRESENCE IS NOT COMPOSITION.
+
+   The first version of this grader scored token presence and gave 86/100 to a
+   page that was visibly wrong: the gradient washed across the ENTIRE hero as a
+   purple background instead of clipping to one word, and body text was set to
+   #141418 on a #0a0a0b page — dark grey on near-black, effectively invisible.
+   It contained `linear-gradient`, `clamp()` and `letter-spacing:-0.03em`, so it
+   scored well while looking nothing like the target.
+
+   A grader that rewards the right tokens in the wrong places teaches the model
+   to produce exactly that. So these checks are about WHERE things are and
+   whether the result is legible — the failures are worth more than the wins. */
+
+/* CSS custom properties are the correct way to write this, and the first
+   grader punished them: it looked for a literal hex in `body { background: … }`
+   and saw `var(--bg)`, so the worked example scored 72 against its own spec.
+   A grader that penalises good practice teaches bad practice. Resolve the
+   variables first. */
+function resolveVars(css: string): string {
+  const vars = new Map<string, string>();
+  for (const m of css.matchAll(/(--[\w-]+)\s*:\s*([^;}]+)[;}]/g)) {
+    vars.set(m[1].trim(), m[2].trim());
+  }
+  let out = css;
+  // Two passes: a variable may be defined in terms of another.
+  for (let i = 0; i < 2; i++) {
+    out = out.replace(/var\(\s*(--[\w-]+)\s*(?:,[^)]*)?\)/g, (whole, name) => vars.get(name) ?? whole);
+  }
+  return out;
+}
+
+/** Parse `#rgb`/`#rrggbb` to relative luminance (WCAG). */
+function luminance(hex: string): number | null {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  let h = m[1];
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  const [r, g, b] = [0, 2, 4].map((k) => parseInt(h.slice(k, k + 2), 16) / 255);
+  const f = (v: number) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+
+function contrastRatio(a: string, b: string): number | null {
+  const la = luminance(a), lb = luminance(b);
+  if (la === null || lb === null) return null;
+  const [hi, lo] = la > lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** The page background and the body text colour, as declared. */
+function bodyColours(css: string): { bg: string | null; fg: string | null } {
+  const block = /body\s*\{([^}]*)\}/i.exec(css)?.[1] ?? "";
+  const bg = /background(?:-color)?\s*:\s*(#[0-9a-f]{3,8})/i.exec(block)?.[1] ?? null;
+  const fg = /(?:^|[;{])\s*color\s*:\s*(#[0-9a-f]{3,8})/i.exec(block)?.[1] ?? null;
+  return { bg, fg };
+}
+
+/** A gradient applied to a whole page/hero/section rather than to text or a
+    button. This is the single biggest "looks generated" tell. */
+function gradientOnLargeSurface(css: string): boolean {
+  const blocks = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)];
+  for (const [, selRaw, body] of blocks) {
+    if (!/linear-gradient|radial-gradient/i.test(body)) continue;
+    // A radial glow is depth, not a wash — allowed.
+    if (/radial-gradient/i.test(body) && !/linear-gradient/i.test(body)) continue;
+    // Clipped to text is exactly what we want.
+    if (/background-clip\s*:\s*text/i.test(body)) continue;
+    const sel = selRaw.trim().toLowerCase();
+    // `\b` does not match before a leading ".", so class selectors were slipping
+    // through — which is exactly how a full-bleed purple hero scored 86/100.
+    if (/(?:^|[\s,>+~])(?:body|html|header|section|main|\.hero\b|\.header\b|\.container\b|\.page\b|\.wrapper\b|\.banner\b)/.test(sel)) return true;
+  }
+  return false;
+}
+
+const CHECKS: { name: string; test: (css: string) => boolean; weight: number }[] = [
+  { name: "dark base colour", weight: 8, test: (c) => {
+      const { bg } = bodyColours(c);
+      const l = bg ? luminance(bg) : null;
+      return l !== null && l < 0.06;
+    } },
+  { name: "large fluid headline", weight: 12, test: (c) => /font-size\s*:\s*clamp\(|font-size\s*:\s*(?:[4-9]\d|\d{3})px|font-size\s*:\s*[3-9](?:\.\d+)?rem/i.test(c) },
+  { name: "tightened heading tracking", weight: 6, test: (c) => /letter-spacing\s*:\s*-\s*0?\.\d+(?:em|px|rem)/i.test(c) },
+  { name: "gradient CLIPPED TO TEXT", weight: 14, test: (c) => /background-clip\s*:\s*text|-webkit-background-clip\s*:\s*text/i.test(c) },
+  { name: "soft glow for depth", weight: 8, test: (c) => /radial-gradient\(/i.test(c) },
+  { name: "generous section spacing", weight: 8, test: (c) => /padding[^:;]*:\s*(?:[6-9]\d|1\d{2})px|padding[^:;]*:\s*(?:[4-9](?:\.\d+)?rem)/i.test(c) },
+  { name: "centred max-width container", weight: 8, test: (c) => /max-width\s*:\s*(?:[89]\d{2}|1[0-4]\d{2})px/i.test(c) && /margin\s*:\s*0\s+auto/i.test(c) },
+  { name: "hover states", weight: 6, test: (c) => /:hover\s*\{/i.test(c) },
+  { name: "transitions", weight: 4, test: (c) => /transition\s*:/i.test(c) },
+  { name: "responsive breakpoint", weight: 6, test: (c) => /@media[^{]*\((?:max|min)-width/i.test(c) },
+  { name: "subtle borders", weight: 4, test: (c) => /border\s*:\s*1px\s+solid\s+rgba\(255,\s*255,\s*255,\s*0?\.\d+\)/i.test(c) },
 ];
 
-/** Grade the visual quality of what was actually written. */
-export function gradeDesign(css: string): DesignVerdict {
+/* Failures. These are worth more than any single win, because each one is
+   visible from across the room and no amount of correct tokens compensates. */
+const FAILURES: { name: string; test: (css: string) => boolean; penalty: number }[] = [
+  { name: "BODY TEXT IS UNREADABLE ON THE BACKGROUND", penalty: 45, test: (c) => {
+      const { bg, fg } = bodyColours(c);
+      if (!bg || !fg) return false;
+      const ratio = contrastRatio(bg, fg);
+      return ratio !== null && ratio < 3;
+    } },
+  { name: "GRADIENT WASHED OVER A WHOLE SECTION INSTEAD OF ONE WORD", penalty: 30, test: gradientOnLargeSurface },
+  { name: "research links or URLs left in the stylesheet", penalty: 10, test: (c) => /^\s*\/\*[\s\S]{0,400}https?:\/\//m.test(c) },
+  { name: "everything centred, including body copy", penalty: 10, test: (c) =>
+      (c.match(/text-align\s*:\s*center/gi) || []).length >= 3 },
+];
+
+/** Grade what was actually written. Wins add, composition failures subtract —
+    and a failure outweighs several wins, because it is visible from across the
+    room and no amount of correct tokens compensates for it. */
+export function gradeDesign(rawCss: string): DesignVerdict {
+  const css = resolveVars(rawCss);
   const met: string[] = [];
   const missing: string[] = [];
   let score = 0;
   for (const c of CHECKS) {
-    if (c.test.test(css)) { score += c.weight; met.push(c.name); }
+    if (c.test(css)) { score += c.weight; met.push(c.name); }
     else missing.push(c.name);
   }
-  return { score, met, missing };
+  for (const f of FAILURES) {
+    if (f.test(css)) { score -= f.penalty; missing.unshift(f.name); }
+  }
+  return { score: Math.max(0, Math.min(100, score)), met, missing };
 }
 
 /** What to hand back when the design bar wasn't met. */
