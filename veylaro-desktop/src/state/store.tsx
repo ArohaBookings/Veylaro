@@ -100,6 +100,7 @@ import { enforcementBrief, isProtocolFailure } from "../engine/protocolEnforcer"
 import { breadthBrief, detectRegression, regressionBrief } from "../engine/progressGuard";
 import { findBrokenReferences, referenceGaps, repairReferences } from "../engine/referenceGate";
 import { designBriefFor, designGaps, detectArtifactKind, gradeDesign, wantsVisualDesign } from "../engine/designSystem";
+import { checkPlayability, playabilityGaps } from "../engine/playabilityGate";
 import { assessShrink } from "../engine/workPreservation";
 import { synthesizeSemanticRepairs } from "../engine/semanticRepair";
 import { explicitlyRequestsTestEdits, isProtectedTestPath } from "../engine/testIntegrity";
@@ -1800,6 +1801,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 stepLine(`that step made the project smaller (${regression.linesBefore} → ${regression.linesAfter} lines) — asking for it back`);
                 convo.push({ role: "user", content: regressionBrief(regression) });
                 continue;
+              }
+
+              // PLAYABILITY GATE — a game is proven by whether it can be played.
+              // Measured: a build passed every structural check (rAF, listeners,
+              // gameOver, collision, restart) and rendered a blank canvas, because
+              // it added a PIXEL step to a GRID coordinate and was over on frame
+              // one. Structure is not evidence of a working game.
+              if (detectArtifactKind(text) === "game" && deliverable.size && step < maxSteps) {
+                const js = [...deliverable]
+                  .filter(([p]) => /\.(?:[cm]?js|[jt]sx?)$/i.test(p) || /\.html?$/i.test(p))
+                  .map(([, c]) => c).join("\n");
+                const issues = checkPlayability(js);
+                if (issues.length) {
+                  stepLine(`Not playable yet — ${issues.map((i) => i.name).join(", ")}. Sending it back.`);
+                  convo.push({ role: "user", content: playabilityGaps(issues).join("\n") });
+                  continue;
+                }
               }
 
               // DESIGN GRADE — the same spec, checked against what was written.
